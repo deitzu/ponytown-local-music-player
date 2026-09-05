@@ -5,4 +5,5 @@ pnpm-lock.yaml
 bun.lock
 yarn.lock
 .gitignore
-agent-manager.jsonplans
+agent-manager.json
+plans
