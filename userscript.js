@@ -408,6 +408,13 @@
     function displayLyric(text) {
         embLrcEl.innerText = text;
         ovLrcEl.innerText = text;
+        if (!text) {
+            if (userSettings.lrcMode === 2) embLrcEl.style.display = 'none';
+            if (userSettings.lrcMode === 1) overlay.style.display = 'none';
+        } else {
+            if (userSettings.lrcMode === 2) embLrcEl.style.display = 'block';
+            if (userSettings.lrcMode === 1) overlay.style.display = 'block';
+        }
     }
 
     const formatTime = (sec) => {
@@ -428,6 +435,8 @@
                 else break;
             }
             displayLyric(activeText);
+        } else {
+            displayLyric("");
         }
     });
     
