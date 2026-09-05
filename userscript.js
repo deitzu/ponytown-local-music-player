@@ -22,12 +22,18 @@
 
     const DB_NAME = 'PT_MusicPlayer_DB';
     const STORE_NAME = 'playlist';
+    const DB_VERSION = 2;
     let userSettings = JSON.parse(localStorage.getItem('pt_mp_settings')) || { lrcMode: 1, lrcStyle: 0, lrcBot: 20, lrcSize: 16, autoFetch: true };
 
     function openDB() {
         return new Promise((resolve, reject) => {
-            const req = indexedDB.open(DB_NAME, 1);
-            req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+            const req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                }
+            };
             req.onsuccess = () => resolve(req.result);
             req.onerror = () => reject(req.error);
         });
@@ -106,7 +112,8 @@
                 artist: meta.artist, 
                 album: meta.album, 
                 blob: files[i], 
-                lyrics: "" 
+                lyrics: "",
+                lrcOffset: 0
             }); 
         }
         
@@ -234,6 +241,15 @@
                 <label style="display:flex; align-items:center; gap:5px;"><input type="checkbox" id="pt-set-fetch"> Auto-Fetch API</label>
                 <button id="pt-clear-all" class="pt-btn" style="background:#b71c1c; padding:2px 5px; flex:none;">Clear All</button>
             </div>
+            <div id="pt-lrc-offset-editor" class="pt-set-row" style="display:none; margin-top:8px; padding-top:8px; border-top:1px dashed #444;">
+                <span>Lrc Offset:</span>
+                <div style="display:flex; align-items:center; gap:4px;">
+                    <button id="pt-lrc-off-dec" class="pt-mp-lrc-btn" style="padding:1px 5px;">-</button>
+                    <input type="number" id="pt-lrc-offset" min="-30" max="30" step="0.1" value="0" style="width:60px; background:#333; color:#fff; border:1px solid #555; border-radius:3px; outline:none; text-align:center;">
+                    <button id="pt-lrc-off-inc" class="pt-mp-lrc-btn" style="padding:1px 5px;">+</button>
+                    <span style="font-size:9px; color:#aaa;">s</span>
+                </div>
+            </div>
         </div>
         <div id="pt-mp-body">
             <div id="pt-embedded-lrc"></div>
@@ -278,6 +294,7 @@
     const seekEl = qs('#pt-seek'), timeEl = qs('#pt-time'), shuffleBtn = qs('#pt-shuffle'), repeatBtn = qs('#pt-repeat');
     const toggleListBtn = qs('#pt-toggle-list'), volEl = qs('#pt-vol'), setPanel = qs('#pt-settings-panel');
     const lrcFileIn = qs('#pt-lrc-file'), embLrcEl = qs('#pt-embedded-lrc'), ovLrcEl = overlay.querySelector('#pt-lyric-text');
+    const lrcOffEditor = qs('#pt-lrc-offset-editor'), lrcOffInput = qs('#pt-lrc-offset'), lrcOffDec = qs('#pt-lrc-off-dec'), lrcOffInc = qs('#pt-lrc-off-inc');
 
     // Load Settings
     qs('#pt-set-mode').value = userSettings.lrcMode; qs('#pt-set-style').value = userSettings.lrcStyle;
@@ -303,6 +320,7 @@
         if (userSettings.lrcStyle === 0) ovLrcEl.classList.add('lyric-yt');
         if (userSettings.lrcStyle === 1) ovLrcEl.classList.add('lyric-glow');
         if (userSettings.lrcStyle === 2) ovLrcEl.classList.add('lyric-glass');
+        updateOffsetEditor();
     }
     qs('#pt-settings-panel').addEventListener('change', applySettings);
     applySettings();
@@ -377,13 +395,13 @@
         }
     };
 
-    function parseLRC(text) {
+    function parseLRC(text, offset = 0) {
         parsedLyrics = [];
         if(!text) return;
         const lines = text.split('\n');
         lines.forEach(line => {
             const match = line.match(/\[(\d+):(\d+\.\d+)\](.*)/);
-            if (match) parsedLyrics.push({ time: parseInt(match[1]) * 60 + parseFloat(match[2]), text: match[3].trim() });
+            if (match) parsedLyrics.push({ time: parseInt(match[1]) * 60 + parseFloat(match[2]) + offset, text: match[3].trim() });
         });
     }
 
@@ -432,8 +450,8 @@
     }
 
     async function fetchLyrics(track) {
-        if (track.lyrics) return parseLRC(track.lyrics);
-        if (!userSettings.autoFetch || !track.artist || !track.name) return parseLRC("");
+        if (track.lyrics) return parseLRC(track.lyrics, track.lrcOffset || 0);
+        if (!userSettings.autoFetch || !track.artist || !track.name) return parseLRC("", track.lrcOffset || 0);
         displayLyric("Mencari lirik online...");
         try {
             const res = await fetch(`https://lrclib.net/api/get?artist_name=${encodeURIComponent(track.artist)}&track_name=${encodeURIComponent(track.name)}`);
@@ -441,9 +459,9 @@
             if (data.syncedLyrics) {
                 track.lyrics = data.syncedLyrics;
                 await updateTrack(track);
-                parseLRC(track.lyrics);
-            } else { displayLyric(""); parseLRC(""); }
-        } catch(e) { displayLyric(""); parseLRC(""); }
+                parseLRC(track.lyrics, track.lrcOffset || 0);
+            } else { displayLyric(""); parseLRC("", track.lrcOffset || 0); }
+        } catch(e) { displayLyric(""); parseLRC("", track.lrcOffset || 0); }
     }
 
     async function playTrack(index) {
@@ -460,8 +478,9 @@
         titleEl.innerText = track.artist ? `${track.artist} - ${track.name}` : track.name; 
         updateMediaSession(track);
         displayLyric("");
-        parseLRC("");
+        parseLRC("", track.lrcOffset || 0);
         await fetchLyrics(track);
+        updateOffsetEditor();
         renderList();
     }
 
@@ -475,7 +494,7 @@
             if(trk) {
                 trk.lyrics = ev.target.result;
                 await updateTrack(trk);
-                if(currentIndex > -1 && playlist[currentIndex].id === targetUploadTrackId) parseLRC(trk.lyrics);
+                if(currentIndex > -1 && playlist[currentIndex].id === targetUploadTrackId) parseLRC(trk.lyrics, trk.lrcOffset || 0);
                 alert("Lirik berhasil disimpan!");
                 refreshUI();
             }
@@ -484,7 +503,51 @@
         lrcFileIn.value = '';
     };
 
-    async function refreshUI() { playlist = await loadPlaylist(); renderList(); }
+    async function refreshUI() { playlist = await loadPlaylist(); renderList(); updateOffsetEditor(); }
+    
+    function updateOffsetEditor() {
+        const track = playlist[currentIndex];
+        if (currentIndex < 0 || !track || !track.lyrics || userSettings.lrcMode === 0) {
+            lrcOffEditor.style.display = 'none';
+            return;
+        }
+        lrcOffEditor.style.display = 'flex';
+        lrcOffInput.value = track.lrcOffset || 0;
+    }
+    
+    lrcOffDec.onclick = () => {
+        const track = playlist[currentIndex];
+        if (!track) return;
+        const cur = track.lrcOffset || 0;
+        const val = Math.max(-30, cur - 0.5);
+        track.lrcOffset = val;
+        lrcOffInput.value = val;
+        updateTrack(track);
+        parseLRC(track.lyrics, val);
+    };
+    
+    lrcOffInc.onclick = () => {
+        const track = playlist[currentIndex];
+        if (!track) return;
+        const cur = track.lrcOffset || 0;
+        const val = Math.min(30, cur + 0.5);
+        track.lrcOffset = val;
+        lrcOffInput.value = val;
+        updateTrack(track);
+        parseLRC(track.lyrics, val);
+    };
+    
+    lrcOffInput.onchange = () => {
+        const track = playlist[currentIndex];
+        if (!track) return;
+        let val = parseFloat(lrcOffInput.value) || 0;
+        val = Math.max(-30, Math.min(30, val));
+        track.lrcOffset = val;
+        lrcOffInput.value = val;
+        updateTrack(track);
+        parseLRC(track.lyrics, val);
+    };
+
     function renderList() {
         listEl.innerHTML = '';
         if (!playlist.length) return listEl.innerHTML = '<div style="text-align:center;color:#777;padding:10px;">Kosong. Klik + Add</div>';
