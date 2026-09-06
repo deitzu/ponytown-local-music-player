@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PT Local Music Player (Draggable)
 // @namespace    http://tampermonkey.net/
-// @version      1.9.1
-// @description  Overhauled Local Player: Visualizer, Quick Offset, Themes & Marquee (Hotfix)
+// @version      1.9.2
+// @description  Overhauled Local Player: Visualizer, Quick Offset, Themes, Marquee & UI Fixes
 // @author       deitzu
 // @match        https://pony.town/*
 // @grant        none
@@ -43,7 +43,6 @@
         });
     }
 
-    // Native ID3v2 Parser
     function parseNativeID3(file) {
         return new Promise((resolve) => {
             const defName = file.name.replace(/\.[^/.]+$/, "");
@@ -137,7 +136,6 @@
     const audio = new Audio();
     let audioCtx, gainNode, analyser, dataArray, visCtx, visId;
 
-    // Toast Notification Element
     const toast = document.createElement('div');
     toast.id = 'pt-toast';
     document.body.appendChild(toast);
@@ -168,7 +166,7 @@
         visCtx.clearRect(0, 0, 200, 40);
         visCtx.fillStyle = THEMES[userSettings.theme];
         for(let i = 0; i < 16; i++) {
-            let v = dataArray[i + 2] / 255.0; // Skip lowest rumble
+            let v = dataArray[i + 2] / 255.0; 
             let h = v * 40;
             visCtx.fillRect(i * 12 + 6, 40 - h, 8, h);
         }
@@ -186,11 +184,10 @@
             #pt-mp-header { display: flex; justify-content: space-between; align-items: center; cursor: grab; padding-bottom: 5px; margin-bottom: 5px; border-bottom: 1px solid #444; }
             #pt-mp-container.minimized #pt-mp-header { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
             #pt-mp-header:active { cursor: grabbing; }
-            #pt-mp-header-title { font-weight: bold; color: var(--pt-th); flex-grow: 1;}
+            #pt-mp-header-title { font-weight: bold; color: var(--pt-th); flex-grow: 1; pointer-events: none;}
             .pt-head-btns { display: flex; gap: 12px; }
             .pt-head-btn { background: none; border: none; color: #aaa; cursor: pointer; font-weight: bold; font-size: 14px; padding: 2px; display:flex; align-items:center; justify-content:center;}
             
-            /* Overhaul UI Body */
             #pt-track-info-wrap { position: relative; height: 45px; margin-bottom: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; background: rgba(0,0,0,0.3); border-radius: 6px;}
             #pt-vis-canvas { position: absolute; bottom: 0; left: 0; width: 100%; height: 100%; opacity: 0.3; pointer-events: none; }
             .pt-scroll-box { width: 190px; overflow: hidden; white-space: nowrap; text-align: center; position: relative; z-index: 2;}
@@ -203,9 +200,11 @@
             .pt-set-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
             .pt-set-row select, .pt-set-row input[type="range"] { width: 85px; background: #333; color: #fff; border: 1px solid #555; border-radius:3px; outline:none;}
             .pt-mp-controls, .pt-mp-controls-2 { display: flex; gap: 4px; margin-bottom: 8px; align-items: center;}
-            .pt-mp-controls button, .pt-btn { display: flex; align-items: center; justify-content: center; background: #333; color: #fff; border: 1px solid #555; padding: 6px; border-radius: 4px; cursor: pointer; font-size: 12px; flex: 1; text-align: center; height: 26px; box-sizing: border-box;}
+            /* Fix Symmetry for Add and List */
+            .pt-mp-controls button, .pt-btn { margin: 0; display: flex; align-items: center; justify-content: center; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 12px; flex: 1 1 0; text-align: center; height: 26px; box-sizing: border-box; }
             .pt-mp-controls button:active, .pt-btn:active { background: #555; }
             .btn-active { background: var(--pt-th) !important; color: #000 !important; }
+            
             #pt-seek-container { display: flex; flex-direction: column; margin-bottom: 8px; }
             #pt-time { font-size: 10px; text-align: right; color: #bbb; margin-bottom: 2px; }
             input[type="range"] { -webkit-appearance: none; width: 100%; height: 6px; background: #555; border-radius: 3px; outline: none; }
@@ -308,13 +307,11 @@
     const lrcFileIn = qs('#pt-lrc-file'), embLrcEl = qs('#pt-embedded-lrc'), ovLrcEl = overlay.querySelector('#pt-lyric-text');
     const qoffPanel = overlay.querySelector('#pt-qoff-panel'), qoffVal = overlay.querySelector('#qoff-val');
 
-    // Idle Timer (Hoisted)
     function resetIdle() {
         container.style.opacity = 1; clearTimeout(idleTimer);
         if (!isDragging) idleTimer = setTimeout(() => container.style.opacity = userSettings.idleOp, userSettings.idleSec * 1000);
     }
 
-    // Load Settings To DOM
     qs('#pt-set-mode').value = userSettings.lrcMode; qs('#pt-set-style').value = userSettings.lrcStyle;
     qs('#pt-set-bot').value = userSettings.lrcBot; qs('#pt-set-size').value = userSettings.lrcSize;
     qs('#pt-set-fetch').checked = userSettings.autoFetch; qs('#pt-set-th').value = userSettings.theme;
@@ -350,15 +347,17 @@
     qs('#pt-settings-panel').addEventListener('change', applySettings);
     applySettings();
 
-    // Restore Position
     const savedPos = localStorage.getItem('pt_mp_pos');
     if (savedPos) {
         try { const pos = JSON.parse(savedPos); container.style.right = 'unset'; container.style.left = pos.left; container.style.top = pos.top; } catch(e) {}
     }
 
-    // Stop Propagation for ALL UI interactions so game doesn't receive them
-    ['touchstart', 'touchmove', 'mousedown', 'wheel', 'keydown', 'keyup'].forEach(evt => {
-        container.addEventListener(evt, e => e.stopPropagation());
+    // Fix Drag Blocking - Cuma block event kalo kaga lagi di-drag
+    ['touchstart', 'touchmove', 'mousemove', 'mousedown', 'wheel', 'keydown', 'keyup'].forEach(evt => {
+        container.addEventListener(evt, e => {
+            if (isDragging && (evt === 'touchmove' || evt === 'mousemove')) return;
+            e.stopPropagation();
+        });
         overlay.addEventListener(evt, e => e.stopPropagation());
     });
 
@@ -367,7 +366,7 @@
 
     let initialX, initialY, startX, startY;
     function dragStart(e) {
-        if (e.target.tagName === 'BUTTON') return; // Don't drag if clicking header buttons
+        if (e.target.tagName === 'BUTTON') return;
         if (e.type === "touchstart") { initialX = e.touches[0].clientX; initialY = e.touches[0].clientY; } else { initialX = e.clientX; initialY = e.clientY; }
         const rect = container.getBoundingClientRect();
         container.style.right = 'unset'; container.style.left = rect.left + 'px'; container.style.top = rect.top + 'px';
