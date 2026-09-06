@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PT Local Music Player (Draggable)
 // @namespace    http://tampermonkey.net/
-// @version      1.9.2
-// @description  Overhauled Local Player: Visualizer, Quick Offset, Themes, Marquee & UI Fixes
+// @version      1.9.3
+// @description  Overhauled Local Player: Visualizer, Quick Offset, Themes, Marquee & Toast Overhaul
 // @author       deitzu
 // @match        https://pony.town/*
 // @grant        none
@@ -28,7 +28,7 @@
     
     let userSettings = JSON.parse(localStorage.getItem('pt_mp_settings')) || { 
         lrcMode: 1, lrcStyle: 0, lrcBot: 20, lrcSize: 16, autoFetch: true, 
-        theme: 0, visMode: true, qOffset: true, idleSec: 3.5, idleOp: 0.3 
+        theme: 0, visMode: true, qOffset: true, idleSec: 3.5, idleOp: 0.3, toastNotif: true
     };
 
     function openDB() {
@@ -130,6 +130,12 @@
         tx.objectStore(STORE_NAME).clear(); return new Promise(res => tx.oncomplete = res);
     }
 
+    function formatTime(sec) {
+        if (isNaN(sec)) return "00:00";
+        let m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+        return (m < 10 ? '0'+m : m) + ':' + (s < 10 ? '0'+s : s);
+    }
+
     let playlist = [], currentIndex = -1, isDragging = false, isSeeking = false, idleTimer;
     let isShuffle = false, repeatMode = 0, parsedLyrics = [];
     
@@ -140,10 +146,18 @@
     toast.id = 'pt-toast';
     document.body.appendChild(toast);
     let toastTimer;
-    function showToast(text) {
-        toast.innerText = text; toast.style.opacity = 1;
+    function showToast(track, dur) {
+        toast.innerHTML = `
+            <div id="toast-head">🎵 NOW PLAYING • ${formatTime(dur)}</div>
+            <div id="toast-title">${track.name}</div>
+            <div id="toast-artist">${track.artist || 'Unknown'}</div>
+            <div id="toast-progress"></div>
+        `;
+        toast.classList.remove('show');
+        void toast.offsetWidth; 
+        toast.classList.add('show');
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => toast.style.opacity = 0, 3000);
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
     }
 
     function initWebAudio() {
@@ -177,7 +191,15 @@
     container.innerHTML = `
         <style>
             :root { --pt-th: #ffb74d; }
-            #pt-toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 6px 14px; border-radius: 20px; font-family: sans-serif; font-size: 13px; font-weight: bold; z-index: 9999999; opacity: 0; transition: opacity 0.3s; pointer-events: none; border: 1px solid var(--pt-th); box-shadow: 0 4px 10px rgba(0,0,0,0.5); white-space: nowrap; max-width: 80%; overflow: hidden; text-overflow: ellipsis;}
+            #pt-toast { position: fixed; top: 20px; right: -300px; background: rgba(20,20,20,0.9); color: #fff; padding: 10px 14px 12px; border-radius: 4px; font-family: sans-serif; z-index: 9999999; transition: right 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28); pointer-events: none; border-left: 4px solid var(--pt-th); box-shadow: 0 4px 12px rgba(0,0,0,0.6); width: 220px; box-sizing: border-box; }
+            #pt-toast.show { right: 20px; }
+            #toast-head { font-size: 9px; color: var(--pt-th); font-weight: bold; margin-bottom: 4px; letter-spacing: 0.5px;}
+            #toast-title { font-size: 13px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;}
+            #toast-artist { font-size: 10px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            #toast-progress { position: absolute; bottom: 0; left: 0; height: 2px; background: var(--pt-th); width: 100%; transform-origin: left; }
+            #pt-toast.show #toast-progress { animation: toastBar 3s linear forwards; }
+            @keyframes toastBar { 0% { transform: scaleX(1); } 100% { transform: scaleX(0); } }
+
             #pt-mp-container { position: fixed; top: 15px; right: 15px; z-index: 999999; background: rgba(20,20,20,0.85); color: #fff; padding: 10px; border-radius: 8px; font-family: sans-serif; font-size: 12px; width: 220px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px); border: 1px solid #333; user-select: none; -webkit-user-select: none; transition: opacity 0.3s, width 0.2s, padding 0.2s; }
             #pt-mp-container.minimized { width: auto; padding: 5px 10px; }
             #pt-mp-container.minimized #pt-mp-body, #pt-mp-container.minimized #pt-settings-panel { display: none !important; }
@@ -200,7 +222,6 @@
             .pt-set-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
             .pt-set-row select, .pt-set-row input[type="range"] { width: 85px; background: #333; color: #fff; border: 1px solid #555; border-radius:3px; outline:none;}
             .pt-mp-controls, .pt-mp-controls-2 { display: flex; gap: 4px; margin-bottom: 8px; align-items: center;}
-            /* Fix Symmetry for Add and List */
             .pt-mp-controls button, .pt-btn { margin: 0; display: flex; align-items: center; justify-content: center; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 12px; flex: 1 1 0; text-align: center; height: 26px; box-sizing: border-box; }
             .pt-mp-controls button:active, .pt-btn:active { background: #555; }
             .btn-active { background: var(--pt-th) !important; color: #000 !important; }
@@ -246,6 +267,9 @@
             </div>
             <div class="pt-set-row">
                 <label style="display:flex; align-items:center; gap:5px;"><input type="checkbox" id="pt-set-qoff"> Quick LRC Offset</label>
+            </div>
+            <div class="pt-set-row">
+                <label style="display:flex; align-items:center; gap:5px;"><input type="checkbox" id="pt-set-toast"> Toast Notification</label>
             </div>
             <div class="pt-set-row" style="border-top:1px dashed #444; padding-top:8px; margin-top:8px;">
                 <button id="pt-clear-all" class="pt-btn" style="background:#b71c1c; margin: 0 auto; width: 100%;">Danger: Clear All Tracks</button>
@@ -317,6 +341,7 @@
     qs('#pt-set-fetch').checked = userSettings.autoFetch; qs('#pt-set-th').value = userSettings.theme;
     qs('#pt-set-vis').checked = userSettings.visMode; qs('#pt-set-qoff').checked = userSettings.qOffset;
     qs('#pt-set-idlesec').value = userSettings.idleSec; qs('#pt-set-idleop').value = userSettings.idleOp;
+    qs('#pt-set-toast').checked = userSettings.toastNotif;
     
     function applySettings() {
         userSettings = {
@@ -324,7 +349,8 @@
             lrcBot: parseInt(qs('#pt-set-bot').value), lrcSize: parseInt(qs('#pt-set-size').value),
             autoFetch: qs('#pt-set-fetch').checked, theme: parseInt(qs('#pt-set-th').value),
             visMode: qs('#pt-set-vis').checked, qOffset: qs('#pt-set-qoff').checked,
-            idleSec: parseFloat(qs('#pt-set-idlesec').value), idleOp: parseFloat(qs('#pt-set-idleop').value)
+            idleSec: parseFloat(qs('#pt-set-idlesec').value), idleOp: parseFloat(qs('#pt-set-idleop').value),
+            toastNotif: qs('#pt-set-toast').checked
         };
         localStorage.setItem('pt_mp_settings', JSON.stringify(userSettings));
         
@@ -352,7 +378,6 @@
         try { const pos = JSON.parse(savedPos); container.style.right = 'unset'; container.style.left = pos.left; container.style.top = pos.top; } catch(e) {}
     }
 
-    // Fix Drag Blocking - Cuma block event kalo kaga lagi di-drag
     ['touchstart', 'touchmove', 'mousemove', 'mousedown', 'wheel', 'keydown', 'keyup'].forEach(evt => {
         container.addEventListener(evt, e => {
             if (isDragging && (evt === 'touchmove' || evt === 'mousemove')) return;
@@ -425,12 +450,6 @@
         }
     }
 
-    const formatTime = (sec) => {
-        if (isNaN(sec)) return "00:00";
-        let m = Math.floor(sec / 60), s = Math.floor(sec % 60);
-        return (m < 10 ? '0'+m : m) + ':' + (s < 10 ? '0'+s : s);
-    };
-
     audio.addEventListener('timeupdate', () => {
         if (!isSeeking) seekEl.value = audio.currentTime;
         seekEl.max = audio.duration || 0;
@@ -488,10 +507,15 @@
         currentIndex = index; const track = playlist[currentIndex];
         if (audio.src) URL.revokeObjectURL(audio.src);
         audio.src = URL.createObjectURL(track.blob);
+        
+        audio.onloadedmetadata = () => {
+            if(userSettings.toastNotif) showToast(track, audio.duration);
+        };
+        
         audio.play().catch(e => console.error(e));
         
         titleEl.innerText = track.name; artistEl.innerText = track.artist || "Unknown Artist";
-        checkMarquee(); showToast(`${track.artist ? track.artist + ' - ' : ''}${track.name}`);
+        checkMarquee(); 
         
         updateMediaSession(track); displayLyric(""); parseLRC("", track.lrcOffset || 0);
         await fetchLyrics(track); updateQuickOffsetUI(); renderList();
