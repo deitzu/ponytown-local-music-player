@@ -186,7 +186,7 @@
             #pt-mp-header { display: flex; justify-content: space-between; align-items: center; cursor: grab; padding-bottom: 5px; margin-bottom: 5px; border-bottom: 1px solid #444; }
             #pt-mp-container.minimized #pt-mp-header { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
             #pt-mp-header:active { cursor: grabbing; }
-            #pt-mp-header-title { font-weight: bold; color: var(--pt-th); flex-grow: 1; pointer-events: none;}
+            #pt-mp-header-title { font-weight: bold; color: var(--pt-th); flex-grow: 1;}
             .pt-head-btns { display: flex; gap: 12px; }
             .pt-head-btn { background: none; border: none; color: #aaa; cursor: pointer; font-weight: bold; font-size: 14px; padding: 2px; display:flex; align-items:center; justify-content:center;}
             
