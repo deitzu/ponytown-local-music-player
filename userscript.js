@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PT Local Music Player (Draggable)
 // @namespace    http://tampermonkey.net/
-// @version      1.9.3
-// @description  Overhauled Local Player: Visualizer, Quick Offset, Themes, Marquee & Toast Overhaul
+// @version      1.9.4
+// @description  Overhauled Local Player: Playlist Tags & Filtered Playback
 // @author       deitzu
 // @match        https://pony.town/*
 // @grant        none
@@ -20,16 +20,19 @@
     const svgRepeat1 = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z"/></svg>`;
     const svgVol = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
     const svgGear = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>`;
+    const svgTag = `<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.41l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.36-.36.59-.86.59-1.41s-.23-1.06-.59-1.41zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>`;
 
     const DB_NAME = 'PT_MusicPlayer_DB';
     const STORE_NAME = 'playlist';
     const DB_VERSION = 2;
-    const THEMES = ['#ffb74d', '#81c784', '#4dd0e1', '#b39ddb']; // Amber, Emerald, Cyan, Violet
+    const THEMES = ['#ffb74d', '#81c784', '#4dd0e1', '#b39ddb']; 
     
     let userSettings = JSON.parse(localStorage.getItem('pt_mp_settings')) || { 
         lrcMode: 1, lrcStyle: 0, lrcBot: 20, lrcSize: 16, autoFetch: true, 
-        theme: 0, visMode: true, qOffset: true, idleSec: 3.5, idleOp: 0.3, toastNotif: true
+        theme: 0, visMode: true, qOffset: true, idleSec: 3.5, idleOp: 0.3, toastNotif: true, autoTag: true
     };
+    
+    let currentTagFilter = 'All';
 
     function openDB() {
         return new Promise((resolve, reject) => {
@@ -46,7 +49,7 @@
     function parseNativeID3(file) {
         return new Promise((resolve) => {
             const defName = file.name.replace(/\.[^/.]+$/, "");
-            let meta = { title: defName, artist: "", album: "" };
+            let meta = { title: defName, artist: "", album: "", genre: "" };
             const reader = new FileReader();
             const slice = file.slice(0, Math.min(128 * 1024, file.size));
 
@@ -82,6 +85,7 @@
                             if (frameId === 'TIT2' && text) meta.title = text;
                             if (frameId === 'TPE1' && text) meta.artist = text;
                             if (frameId === 'TALB' && text) meta.album = text;
+                            if (frameId === 'TCON' && text) meta.genre = text;
                         }
                         offset += 10 + frameSize;
                     }
@@ -98,7 +102,8 @@
         for (let i = 0; i < files.length; i++) { 
             qs('#pt-mp-header-title').innerText = `Memuat ${i+1}/${files.length}...`;
             let meta = await parseNativeID3(files[i]);
-            itemsToSave.push({ name: meta.title, artist: meta.artist, album: meta.album, blob: files[i], lyrics: "", lrcOffset: 0 }); 
+            let defaultTag = (userSettings.autoTag && meta.genre) ? meta.genre : "";
+            itemsToSave.push({ name: meta.title, artist: meta.artist, album: meta.album, blob: files[i], lyrics: "", lrcOffset: 0, tag: defaultTag }); 
         }
         const db = await openDB();
         const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -232,14 +237,18 @@
             input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--pt-th); cursor: pointer; }
             #pt-vol-container { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; border-top: 1px dashed #444; padding-top: 8px; }
             #pt-vol-icon { color: #aaa; display: flex; align-items: center; }
-            #pt-mp-list { max-height: 120px; overflow-y: auto; padding-top: 4px; display: block; border-top: 1px solid #333;}
+            
+            #pt-tag-filter-container { display:flex; padding: 4px 0; border-top: 1px solid #333; gap: 4px; align-items: center; margin-top: 4px; }
+            #pt-tag-filter { flex-grow:1; background:#333; color:#fff; border:1px solid #555; border-radius:3px; outline:none; font-size:11px; padding:2px; cursor: pointer; }
+            
+            #pt-mp-list { max-height: 120px; overflow-y: auto; padding-top: 4px; display: block; border-top: 1px solid #333; margin-top:4px;}
             .pt-mp-item { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #222;}
             .pt-mp-item.active { color: var(--pt-th); font-weight: bold; }
-            .pt-mp-item-info { display: flex; flex-direction: column; cursor: pointer; overflow: hidden; max-width: 130px; flex-grow:1;}
+            .pt-mp-item-info { display: flex; flex-direction: column; cursor: pointer; overflow: hidden; max-width: 120px; flex-grow:1;}
             .pt-mp-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             .pt-mp-item-artist { font-size: 9px; color: #aaa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             .pt-mp-acts { display: flex; gap: 4px; }
-            .pt-mp-lrc-btn, .pt-mp-del { background:#333; border:1px solid #555; color: #ddd; border-radius:3px; cursor: pointer; font-size: 10px; padding: 2px 4px;}
+            .pt-mp-lrc-btn, .pt-mp-del { background:#333; border:1px solid #555; color: #ddd; border-radius:3px; cursor: pointer; font-size: 10px; padding: 2px 4px; display:flex; align-items:center; justify-content:center;}
             .pt-mp-del { color: #e57373; font-weight: bold;}
             #pt-embedded-lrc { display: none; text-align: center; font-style: italic; color: var(--pt-th); font-size: 11px; padding: 4px; border-bottom: 1px dashed #444; margin-bottom: 5px; min-height: 15px;}
             input[type="file"] { display: none; }
@@ -261,6 +270,9 @@
             <div class="pt-set-row"><span>Idle Opacity:</span><input type="range" id="pt-set-idleop" min="0.1" max="1" step="0.1" value="0.3"></div>
             <div class="pt-set-row" style="margin-top:8px;">
                 <label style="display:flex; align-items:center; gap:5px;"><input type="checkbox" id="pt-set-fetch"> Auto-Fetch API</label>
+            </div>
+            <div class="pt-set-row">
+                <label style="display:flex; align-items:center; gap:5px;"><input type="checkbox" id="pt-set-autotag"> Auto-Tag (ID3)</label>
             </div>
             <div class="pt-set-row">
                 <label style="display:flex; align-items:center; gap:5px;"><input type="checkbox" id="pt-set-vis"> Audio Visualizer</label>
@@ -301,6 +313,10 @@
                 <label class="pt-btn">+ Add<input type="file" id="pt-file" accept="audio/*" multiple></label>
                 <button id="pt-toggle-list" class="pt-btn">▼ List</button>
             </div>
+            <div id="pt-tag-filter-container">
+                <span style="font-size:10px; color:#aaa;">Tag:</span>
+                <select id="pt-tag-filter"><option value="All">All</option></select>
+            </div>
             <div id="pt-mp-list"></div>
         </div>
         <input type="file" id="pt-lrc-file" accept=".lrc" style="display:none;">
@@ -330,6 +346,7 @@
     const toggleListBtn = qs('#pt-toggle-list'), volEl = qs('#pt-vol'), setPanel = qs('#pt-settings-panel');
     const lrcFileIn = qs('#pt-lrc-file'), embLrcEl = qs('#pt-embedded-lrc'), ovLrcEl = overlay.querySelector('#pt-lyric-text');
     const qoffPanel = overlay.querySelector('#pt-qoff-panel'), qoffVal = overlay.querySelector('#qoff-val');
+    const tagFilterEl = qs('#pt-tag-filter'), tagFilterContainer = qs('#pt-tag-filter-container');
 
     function resetIdle() {
         container.style.opacity = 1; clearTimeout(idleTimer);
@@ -341,7 +358,7 @@
     qs('#pt-set-fetch').checked = userSettings.autoFetch; qs('#pt-set-th').value = userSettings.theme;
     qs('#pt-set-vis').checked = userSettings.visMode; qs('#pt-set-qoff').checked = userSettings.qOffset;
     qs('#pt-set-idlesec').value = userSettings.idleSec; qs('#pt-set-idleop').value = userSettings.idleOp;
-    qs('#pt-set-toast').checked = userSettings.toastNotif;
+    qs('#pt-set-toast').checked = userSettings.toastNotif; qs('#pt-set-autotag').checked = userSettings.autoTag;
     
     function applySettings() {
         userSettings = {
@@ -350,7 +367,7 @@
             autoFetch: qs('#pt-set-fetch').checked, theme: parseInt(qs('#pt-set-th').value),
             visMode: qs('#pt-set-vis').checked, qOffset: qs('#pt-set-qoff').checked,
             idleSec: parseFloat(qs('#pt-set-idlesec').value), idleOp: parseFloat(qs('#pt-set-idleop').value),
-            toastNotif: qs('#pt-set-toast').checked
+            toastNotif: qs('#pt-set-toast').checked, autoTag: qs('#pt-set-autotag').checked
         };
         localStorage.setItem('pt_mp_settings', JSON.stringify(userSettings));
         
@@ -421,7 +438,12 @@
         else if(!isMinimized && !audio.paused && userSettings.visMode) drawVis();
     };
     setBtn.onclick = () => { isSettingsOpen = !isSettingsOpen; setPanel.style.display = isSettingsOpen ? 'block' : 'none'; };
-    toggleListBtn.onclick = () => { isListOpen = !isListOpen; listEl.style.display = isListOpen ? 'block' : 'none'; toggleListBtn.innerText = isListOpen ? '▼ List' : '▲ List'; };
+    toggleListBtn.onclick = () => { 
+        isListOpen = !isListOpen; 
+        listEl.style.display = isListOpen ? 'block' : 'none'; 
+        tagFilterContainer.style.display = isListOpen ? 'flex' : 'none';
+        toggleListBtn.innerText = isListOpen ? '▼ List' : '▲ List'; 
+    };
     qs('#pt-clear-all').onclick = async () => {
         if(confirm("Hapus semua lagu dari database?")) {
             await clearAll(); audio.pause(); currentIndex = -1; playlist = [];
@@ -555,23 +577,72 @@
         reader.readAsText(file); lrcFileIn.value = '';
     };
 
+    tagFilterEl.onchange = (e) => {
+        currentTagFilter = e.target.value;
+        renderList();
+    };
+
     async function refreshUI() { playlist = await loadPlaylist(); renderList(); updateQuickOffsetUI(); }
 
+    function getFilteredPool() {
+        let pool = [];
+        playlist.forEach((t, i) => {
+            if (currentTagFilter === 'All') pool.push(i);
+            else if (currentTagFilter === 'Untagged' && !t.tag) pool.push(i);
+            else if (t.tag === currentTagFilter) pool.push(i);
+        });
+        return pool;
+    }
+
     function renderList() {
+        const tags = new Set();
+        playlist.forEach(t => { if (t.tag) tags.add(t.tag); });
+        
+        tagFilterEl.innerHTML = `<option value="All">All</option><option value="Untagged">Untagged</option>`;
+        Array.from(tags).sort().forEach(tag => {
+            const opt = document.createElement('option');
+            opt.value = tag; opt.innerText = tag;
+            tagFilterEl.appendChild(opt);
+        });
+        
+        if (currentTagFilter === 'All' || currentTagFilter === 'Untagged' || tags.has(currentTagFilter)) {
+            tagFilterEl.value = currentTagFilter;
+        } else {
+            currentTagFilter = 'All'; tagFilterEl.value = 'All';
+        }
+
         listEl.innerHTML = '';
-        if (!playlist.length) return listEl.innerHTML = '<div style="text-align:center;color:#777;padding:10px;">Kosong. Klik + Add</div>';
+        let visibleCount = 0;
+        
         playlist.forEach((track, idx) => {
+            if (currentTagFilter === 'Untagged' && track.tag) return;
+            if (currentTagFilter !== 'All' && currentTagFilter !== 'Untagged' && track.tag !== currentTagFilter) return;
+            
+            visibleCount++;
             const item = document.createElement('div');
             item.className = `pt-mp-item ${idx === currentIndex ? 'active' : ''}`;
             
             const info = document.createElement('div'); info.className = 'pt-mp-item-info';
             info.innerHTML = `<span class="pt-mp-item-name">${track.name}</span>
-                              <span class="pt-mp-item-artist">${track.artist || 'Unknown'}${track.album ? ' • ' + track.album : ''} ${track.lyrics ? '✓LRC' : ''}</span>`;
+                              <span class="pt-mp-item-artist">${track.artist || 'Unknown'}${track.tag ? ' • ['+track.tag+']' : ''} ${track.lyrics ? '✓' : ''}</span>`;
             info.onclick = () => playTrack(idx);
             
             const acts = document.createElement('div'); acts.className = 'pt-mp-acts';
+            
+            const tagBtn = document.createElement('button'); tagBtn.className = 'pt-mp-lrc-btn'; tagBtn.innerHTML = svgTag;
+            tagBtn.onclick = async (e) => {
+                e.stopPropagation();
+                const newTag = prompt("Edit Tag untuk lagu ini:", track.tag || "");
+                if (newTag !== null) {
+                    track.tag = newTag.trim();
+                    await updateTrack(track);
+                    refreshUI();
+                }
+            };
+
             const lrcBtn = document.createElement('button'); lrcBtn.className = 'pt-mp-lrc-btn'; lrcBtn.innerText = '+LRC';
             lrcBtn.onclick = (e) => { e.stopPropagation(); targetUploadTrackId = track.id; lrcFileIn.click(); };
+            
             const delBtn = document.createElement('button'); delBtn.className = 'pt-mp-del'; delBtn.innerText = '✕';
             delBtn.onclick = async (e) => {
                 e.stopPropagation(); await deleteTrack(track.id);
@@ -579,22 +650,40 @@
                 else if (idx < currentIndex) currentIndex--;
                 refreshUI();
             };
-            acts.append(lrcBtn, delBtn); item.append(info, acts); listEl.appendChild(item);
+            
+            acts.append(tagBtn, lrcBtn, delBtn); item.append(info, acts); listEl.appendChild(item);
         });
+        if(visibleCount === 0) listEl.innerHTML = '<div style="text-align:center;color:#777;padding:10px;">Kosong.</div>';
     }
 
     playBtn.onclick = () => {
         if (!playlist.length) return;
         initWebAudio(); if (audioCtx.state === 'suspended') audioCtx.resume();
-        if (audio.paused) { currentIndex === -1 ? playTrack(0) : audio.play(); } 
+        if (audio.paused) { currentIndex === -1 ? playTrack(getFilteredPool()[0] || 0) : audio.play(); } 
         else { audio.pause(); }
     };
     nextBtn.onclick = () => {
         if (!playlist.length) return;
-        if (isShuffle) playTrack(Math.floor(Math.random() * playlist.length));
-        else playTrack(currentIndex < playlist.length - 1 ? currentIndex + 1 : 0);
+        const pool = getFilteredPool();
+        if(!pool.length) return;
+        
+        if (isShuffle) {
+            playTrack(pool[Math.floor(Math.random() * pool.length)]);
+        } else {
+            let poolIdx = pool.indexOf(currentIndex);
+            if(poolIdx === -1) playTrack(pool[0]); 
+            else playTrack(poolIdx < pool.length - 1 ? pool[poolIdx + 1] : pool[0]);
+        }
     };
-    prevBtn.onclick = () => { if (playlist.length) playTrack(currentIndex > 0 ? currentIndex - 1 : playlist.length - 1); };
+    prevBtn.onclick = () => {
+        if (!playlist.length) return;
+        const pool = getFilteredPool();
+        if(!pool.length) return;
+        
+        let poolIdx = pool.indexOf(currentIndex);
+        if(poolIdx === -1) playTrack(pool[0]);
+        else playTrack(poolIdx > 0 ? pool[poolIdx - 1] : pool[pool.length - 1]);
+    };
     
     shuffleBtn.onclick = () => { isShuffle = !isShuffle; shuffleBtn.classList.toggle('btn-active', isShuffle); };
     repeatBtn.onclick = () => {
@@ -607,9 +696,14 @@
 
     audio.onended = () => {
         if (repeatMode === 2) { playTrack(currentIndex); return; }
-        if (isShuffle) { playTrack(Math.floor(Math.random() * playlist.length)); return; }
-        if (currentIndex < playlist.length - 1) playTrack(currentIndex + 1);
-        else if (repeatMode === 1) playTrack(0);
+        const pool = getFilteredPool();
+        if (!pool.length) return;
+        
+        if (isShuffle) { playTrack(pool[Math.floor(Math.random() * pool.length)]); return; }
+        
+        let poolIdx = pool.indexOf(currentIndex);
+        if (poolIdx !== -1 && poolIdx < pool.length - 1) playTrack(pool[poolIdx + 1]);
+        else if (repeatMode === 1) playTrack(pool[0]);
     };
 
     fileInput.onchange = async (e) => {
