@@ -62,6 +62,70 @@ All settings persist in localStorage under key pt_mp_settings:
 | Font Size | 12–24px | 16px |
 | Auto-Fetch API | On / Off | On |
 
+## Changelog
+
+### v1.9.3 — Toast Notification Overhaul
+**Release Date:** Sep 6, 2026
+
+#### New Features
+- **Toast Notifications (v2)**: Completely redesigned toast with track title, artist, duration, and progress bar
+- **Progress bar animation**: Sliding bar that depletes over the 3-second toast lifetime
+- **CSS slide-in/out**: Smooth animation using `cubic-bezier(0.18, 0.89, 0.32, 1.28)`
+- **Toast setting toggle**: Enable/disable toast notifications via settings panel
+- **Metadata-aware triggering**: Toast fires on `audio.onloadedmetadata` for accurate duration display
+
+#### Improvements
+- Hoisted `formatTime()` function to top-level for reuse in toast display
+- Removed inline comments for cleaner code
+
+#### Removed
+- Temporary Gemini patch files (`gemini-code-*.js`)
+
+---
+
+### v1.9.2 — Gemini Patch Integration
+**Release Date:** Sep 5, 2026
+
+#### New Features
+- **Audio Visualizer**: Canvas-based frequency bars using Web Audio API analyser
+- **Themes**: Four color schemes (Amber, Emerald, Cyan, Violet) via CSS custom properties
+- **Marquee scrolling**: Long track titles scroll automatically (6s loop)
+- **Quick LRC Offset panel**: Overlay +/- buttons for instant lyric timing adjustment
+- **Idle fade settings**: Configurable idle timeout (2-10s) and opacity (0.1-1.0)
+- **Scrollable settings panel**: max-height: 250px with vertical overflow
+
+#### Bug Fixes
+- **Lyric background auto-hide**: Empty lyric containers hidden when no lyrics shown
+- **Offset direction fixed**: parseLRC() uses +offset (was -offset) for correct delay
+
+---
+
+### v1.9.1 — Lyric Offset Feature
+**Release Date:** Sep 5, 2026
+
+#### New Features
+- **Per-track lyric offset**: lrcOffset field stored in IndexedDB per-track
+- **DB Version 2**: Migration with onupgradeneeded handler
+- **Numeric +/- input** in settings for lyric timing adjustment
+- Offset persists per-track across sessions
+
+---
+
+### v1.8.1 — Initial Release
+**Release Date:** Sep 4, 2026
+
+#### Features
+- Persistent playlist with IndexedDB
+- Native ID3v2 parser (v2.3/v2.4)
+- LRC lyrics with real-time sync
+- Overlay and embedded display modes
+- Auto-fetch lyrics from lrclib.net
+- Play/Pause/Prev/Next with shuffle/repeat
+- Web Audio API volume control
+- Media Session integration
+- Draggable window with position persistence
+- Settings panel with localStorage configuration
+
 ## Technical Details
 
 ### Storage Schema (IndexedDB)
