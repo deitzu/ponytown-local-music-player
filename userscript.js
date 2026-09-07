@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PT Local Music Player (Draggable)
 // @namespace    http://tampermonkey.net/
-// @version      1.9.4
-// @description  Overhauled Local Player: Playlist Tags & Filtered Playback
+// @version      1.9.5
+// @description  Overhauled Local Player: Multiple Tags & Match-ALL Filter
 // @author       deitzu
 // @match        https://pony.town/*
 // @grant        none
@@ -32,7 +32,7 @@
         theme: 0, visMode: true, qOffset: true, idleSec: 3.5, idleOp: 0.3, toastNotif: true, autoTag: true
     };
     
-    let currentTagFilter = 'All';
+    let activeFilters = [];
 
     function openDB() {
         return new Promise((resolve, reject) => {
@@ -102,8 +102,8 @@
         for (let i = 0; i < files.length; i++) { 
             qs('#pt-mp-header-title').innerText = `Memuat ${i+1}/${files.length}...`;
             let meta = await parseNativeID3(files[i]);
-            let defaultTag = (userSettings.autoTag && meta.genre) ? meta.genre : "";
-            itemsToSave.push({ name: meta.title, artist: meta.artist, album: meta.album, blob: files[i], lyrics: "", lrcOffset: 0, tag: defaultTag }); 
+            let defaultTags = (userSettings.autoTag && meta.genre) ? meta.genre.split(',').map(t=>t.trim()).filter(t=>t) : [];
+            itemsToSave.push({ name: meta.title, artist: meta.artist, album: meta.album, blob: files[i], lyrics: "", lrcOffset: 0, tags: defaultTags }); 
         }
         const db = await openDB();
         const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -238,10 +238,12 @@
             #pt-vol-container { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; border-top: 1px dashed #444; padding-top: 8px; }
             #pt-vol-icon { color: #aaa; display: flex; align-items: center; }
             
-            #pt-tag-filter-container { display:flex; padding: 4px 0; border-top: 1px solid #333; gap: 4px; align-items: center; margin-top: 4px; }
+            #pt-tag-filter-container { display:flex; padding: 4px 0 0 0; border-top: 1px solid #333; gap: 4px; align-items: center; margin-top: 4px; }
             #pt-tag-filter { flex-grow:1; background:#333; color:#fff; border:1px solid #555; border-radius:3px; outline:none; font-size:11px; padding:2px; cursor: pointer; }
+            #pt-active-filters { display: block; padding: 4px 0 4px 0; border-bottom: 1px solid #333; min-height: 18px;}
+            .pt-chip { background: var(--pt-th); color: #000; padding: 2px 6px; border-radius: 8px; font-size: 9px; cursor: pointer; display: inline-block; margin: 2px 2px 2px 0; font-weight: bold;}
             
-            #pt-mp-list { max-height: 120px; overflow-y: auto; padding-top: 4px; display: block; border-top: 1px solid #333; margin-top:4px;}
+            #pt-mp-list { max-height: 120px; overflow-y: auto; padding-top: 4px; display: block; }
             .pt-mp-item { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #222;}
             .pt-mp-item.active { color: var(--pt-th); font-weight: bold; }
             .pt-mp-item-info { display: flex; flex-direction: column; cursor: pointer; overflow: hidden; max-width: 120px; flex-grow:1;}
@@ -314,9 +316,11 @@
                 <button id="pt-toggle-list" class="pt-btn">▼ List</button>
             </div>
             <div id="pt-tag-filter-container">
-                <span style="font-size:10px; color:#aaa;">Tag:</span>
-                <select id="pt-tag-filter"><option value="All">All</option></select>
+                <span style="font-size:10px; color:#aaa;">Filter:</span>
+                <select id="pt-tag-filter"><option value="" disabled selected>+ Add Tag</option></select>
+                <button id="pt-clear-filters" class="pt-btn" style="width: auto; padding: 0 6px; height: 20px; font-size:10px;">Clear</button>
             </div>
+            <div id="pt-active-filters"></div>
             <div id="pt-mp-list"></div>
         </div>
         <input type="file" id="pt-lrc-file" accept=".lrc" style="display:none;">
@@ -346,7 +350,7 @@
     const toggleListBtn = qs('#pt-toggle-list'), volEl = qs('#pt-vol'), setPanel = qs('#pt-settings-panel');
     const lrcFileIn = qs('#pt-lrc-file'), embLrcEl = qs('#pt-embedded-lrc'), ovLrcEl = overlay.querySelector('#pt-lyric-text');
     const qoffPanel = overlay.querySelector('#pt-qoff-panel'), qoffVal = overlay.querySelector('#qoff-val');
-    const tagFilterEl = qs('#pt-tag-filter'), tagFilterContainer = qs('#pt-tag-filter-container');
+    const tagFilterEl = qs('#pt-tag-filter'), tagFilterContainer = qs('#pt-tag-filter-container'), activeFiltersEl = qs('#pt-active-filters');
 
     function resetIdle() {
         container.style.opacity = 1; clearTimeout(idleTimer);
@@ -442,6 +446,7 @@
         isListOpen = !isListOpen; 
         listEl.style.display = isListOpen ? 'block' : 'none'; 
         tagFilterContainer.style.display = isListOpen ? 'flex' : 'none';
+        activeFiltersEl.style.display = isListOpen ? 'block' : 'none';
         toggleListBtn.innerText = isListOpen ? '▼ List' : '▲ List'; 
     };
     qs('#pt-clear-all').onclick = async () => {
@@ -578,53 +583,93 @@
     };
 
     tagFilterEl.onchange = (e) => {
-        currentTagFilter = e.target.value;
-        renderList();
+        const val = e.target.value;
+        if(val && !activeFilters.includes(val)) {
+            if(val === 'Untagged') activeFilters = ['Untagged'];
+            else {
+                activeFilters = activeFilters.filter(x => x !== 'Untagged');
+                activeFilters.push(val);
+            }
+            renderList();
+        }
+        tagFilterEl.value = "";
     };
+    
+    qs('#pt-clear-filters').onclick = () => { activeFilters = []; renderList(); };
 
     async function refreshUI() { playlist = await loadPlaylist(); renderList(); updateQuickOffsetUI(); }
 
     function getFilteredPool() {
         let pool = [];
-        playlist.forEach((t, i) => {
-            if (currentTagFilter === 'All') pool.push(i);
-            else if (currentTagFilter === 'Untagged' && !t.tag) pool.push(i);
-            else if (t.tag === currentTagFilter) pool.push(i);
+        playlist.forEach((track, i) => {
+            const tags = track.tags || (track.tag ? [track.tag] : []);
+            let show = true;
+            if(activeFilters.includes('Untagged')) {
+                if(tags.length > 0) show = false;
+            } else if (activeFilters.length > 0) {
+                show = activeFilters.every(f => tags.includes(f));
+            }
+            if(show) pool.push(i);
         });
         return pool;
     }
 
     function renderList() {
-        const tags = new Set();
-        playlist.forEach(t => { if (t.tag) tags.add(t.tag); });
-        
-        tagFilterEl.innerHTML = `<option value="All">All</option><option value="Untagged">Untagged</option>`;
-        Array.from(tags).sort().forEach(tag => {
-            const opt = document.createElement('option');
-            opt.value = tag; opt.innerText = tag;
-            tagFilterEl.appendChild(opt);
+        const allTags = new Set();
+        playlist.forEach(t => { 
+            const tags = t.tags || (t.tag ? [t.tag] : []);
+            tags.forEach(tg => allTags.add(tg));
         });
         
-        if (currentTagFilter === 'All' || currentTagFilter === 'Untagged' || tags.has(currentTagFilter)) {
-            tagFilterEl.value = currentTagFilter;
+        tagFilterEl.innerHTML = `<option value="" disabled selected>+ Add Tag</option><option value="Untagged">Untagged</option>`;
+        Array.from(allTags).sort().forEach(tag => {
+            if(!activeFilters.includes(tag)) {
+                const opt = document.createElement('option');
+                opt.value = tag; opt.innerText = tag;
+                tagFilterEl.appendChild(opt);
+            }
+        });
+        
+        activeFiltersEl.innerHTML = '';
+        if(activeFilters.length === 0) {
+            activeFiltersEl.innerHTML = `<span style="font-size:10px; color:#aaa; margin-left:4px;">All Tracks</span>`;
         } else {
-            currentTagFilter = 'All'; tagFilterEl.value = 'All';
+            activeFilters.forEach(f => {
+                const chip = document.createElement('span');
+                chip.className = 'pt-chip'; chip.innerText = f + ' ✕';
+                chip.onclick = () => { activeFilters = activeFilters.filter(x => x !== f); renderList(); };
+                activeFiltersEl.appendChild(chip);
+            });
         }
 
         listEl.innerHTML = '';
         let visibleCount = 0;
         
         playlist.forEach((track, idx) => {
-            if (currentTagFilter === 'Untagged' && track.tag) return;
-            if (currentTagFilter !== 'All' && currentTagFilter !== 'Untagged' && track.tag !== currentTagFilter) return;
+            const tags = track.tags || (track.tag ? [track.tag] : []);
+            
+            let show = true;
+            if(activeFilters.includes('Untagged')) {
+                if(tags.length > 0) show = false;
+            } else if (activeFilters.length > 0) {
+                show = activeFilters.every(f => tags.includes(f));
+            }
+            
+            if(!show) return;
             
             visibleCount++;
             const item = document.createElement('div');
             item.className = `pt-mp-item ${idx === currentIndex ? 'active' : ''}`;
             
+            let tagDisplay = "";
+            if (tags.length > 0) {
+                if (tags.length <= 2) tagDisplay = ` • [${tags.join(', ')}]`;
+                else tagDisplay = ` • [${tags[0]}, ${tags[1]}, +${tags.length - 2}]`;
+            }
+
             const info = document.createElement('div'); info.className = 'pt-mp-item-info';
             info.innerHTML = `<span class="pt-mp-item-name">${track.name}</span>
-                              <span class="pt-mp-item-artist">${track.artist || 'Unknown'}${track.tag ? ' • ['+track.tag+']' : ''} ${track.lyrics ? '✓' : ''}</span>`;
+                              <span class="pt-mp-item-artist">${track.artist || 'Unknown'}${tagDisplay} ${track.lyrics ? '✓' : ''}</span>`;
             info.onclick = () => playTrack(idx);
             
             const acts = document.createElement('div'); acts.className = 'pt-mp-acts';
@@ -632,9 +677,10 @@
             const tagBtn = document.createElement('button'); tagBtn.className = 'pt-mp-lrc-btn'; tagBtn.innerHTML = svgTag;
             tagBtn.onclick = async (e) => {
                 e.stopPropagation();
-                const newTag = prompt("Edit Tag untuk lagu ini:", track.tag || "");
+                const newTag = prompt("Edit Tags (comma separated):", tags.join(", "));
                 if (newTag !== null) {
-                    track.tag = newTag.trim();
+                    track.tags = newTag.split(',').map(t => t.trim()).filter(t => t);
+                    track.tag = null;
                     await updateTrack(track);
                     refreshUI();
                 }
