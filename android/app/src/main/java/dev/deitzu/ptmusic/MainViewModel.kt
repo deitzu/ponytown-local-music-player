@@ -31,7 +31,7 @@ import java.util.concurrent.Executors
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val context = application.applicationContext
     private val store = AppStore(context)
-    private val library = MusicLibrary(context.contentResolver)
+    private val library = MusicLibrary(context)
     private val lyricsRepository = LyricsRepository(store)
 
     private val _tracks = MutableStateFlow<List<Track>>(emptyList())
