@@ -15,6 +15,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -30,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -81,8 +84,11 @@ class FloatingPlayerService : LifecycleService() {
     private val _state = MutableStateFlow(FloatingState())
     private var controller: MediaController? = null
     private var composeView: ComposeView? = null
+    private var lyricView: ComposeView? = null
     private var windowManager: WindowManager? = null
     private var layout: WindowManager.LayoutParams? = null
+    private var lyricLayout: WindowManager.LayoutParams? = null
+    private var lyricViewTreeOwner: FloatingViewTreeOwner? = null
     private var lastInteraction = System.currentTimeMillis()
     private var lyricTrackId: Long? = null
     private var lyricLines = emptyList<dev.deitzu.ptmusic.lyrics.LyricLineBundle>()
@@ -96,6 +102,7 @@ class FloatingPlayerService : LifecycleService() {
         }
         startOverlayForeground()
         createOverlay()
+        createLyricOverlay()
         connectController()
         lifecycleScope.launch {
             while (true) {
@@ -137,6 +144,7 @@ class FloatingPlayerService : LifecycleService() {
                     translated = line?.translated.orEmpty(),
                     alpha = alpha
                 )
+                updateLyricLayout(settings)
                 delay(250)
             }
         }
@@ -150,6 +158,7 @@ class FloatingPlayerService : LifecycleService() {
         if (composeView == null) {
             startOverlayForeground()
             createOverlay()
+            createLyricOverlay()
             connectController()
         }
         touch()
@@ -237,6 +246,72 @@ class FloatingPlayerService : LifecycleService() {
         }
     }
 
+    private fun createLyricOverlay() {
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        val view = ComposeView(this)
+        val owner = FloatingViewTreeOwner()
+        lyricViewTreeOwner = owner
+        view.setViewTreeLifecycleOwner(owner)
+        view.setViewTreeSavedStateRegistryOwner(owner)
+
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = subtitleBottomMargin(store.loadSettings().lrcPosPercent)
+        }
+
+        view.setContent {
+            val state by _state.collectAsState()
+            val settings = store.loadSettings()
+            val line = if (
+                settings.floatingLyrics &&
+                settings.lrcMode == 1 &&
+                (settings.showOriginal || settings.showRomanized || settings.showTranslated)
+            ) {
+                state
+            } else {
+                null
+            }
+
+            FloatingSubtitle(
+                state = line,
+                settings = settings,
+                theme = FLOATING_THEMES.getOrElse(settings.theme) { FLOATING_THEMES.first() }
+            )
+        }
+
+        runCatching {
+            wm.addView(view, lp)
+            lyricView = view
+            lyricLayout = lp
+        }.onFailure {
+            lyricViewTreeOwner?.destroy()
+            lyricViewTreeOwner = null
+        }
+    }
+
+    private fun subtitleBottomMargin(percent: Int): Int {
+        return (resources.displayMetrics.heightPixels * (percent.coerceIn(5, 50) / 100f)).toInt()
+    }
+
+    private fun updateLyricLayout(settings: PlayerSettings) {
+        val wm = windowManager ?: (getSystemService(WINDOW_SERVICE) as WindowManager)
+        val lp = lyricLayout ?: return
+        lp.y = subtitleBottomMargin(settings.lrcPosPercent)
+        runCatching { lyricView?.let { wm.updateViewLayout(it, lp) } }
+    }
+
     private fun touch() { lastInteraction = System.currentTimeMillis() }
 
     private fun startOverlayForeground() {
@@ -265,10 +340,19 @@ class FloatingPlayerService : LifecycleService() {
 
     override fun onDestroy() {
         runCatching { composeView?.disposeComposition() }
-        runCatching { windowManager?.let { wm -> composeView?.let { wm.removeView(it) } } }
+        runCatching { lyricView?.disposeComposition() }
+        runCatching {
+            windowManager?.let { wm ->
+                composeView?.let { wm.removeView(it) }
+                lyricView?.let { wm.removeView(it) }
+            }
+        }
         composeView = null
+        lyricView = null
         viewTreeOwner?.destroy()
         viewTreeOwner = null
+        lyricViewTreeOwner?.destroy()
+        lyricViewTreeOwner = null
         controller?.release()
         controller = null
         windowManager = null
@@ -305,6 +389,74 @@ private class FloatingViewTreeOwner : SavedStateRegistryOwner {
     fun destroy() {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+    }
+}
+
+@Composable
+private fun FloatingSubtitle(
+    state: FloatingState?,
+    settings: PlayerSettings,
+    theme: FloatingTheme
+) {
+    if (state == null) return
+
+    val hasText = settings.showOriginal && state.original.isNotBlank() ||
+        settings.showRomanized && state.romanized.isNotBlank() ||
+        settings.showTranslated && state.translated.isNotBlank()
+
+    if (!hasText) return
+
+    Box(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Surface(
+            color = when (settings.lrcStyle) {
+                2 -> Color.White.copy(alpha = 0.12f)
+                1 -> Color.Transparent
+                else -> Color.Black.copy(alpha = 0.62f)
+            },
+            shape = when (settings.lrcStyle) {
+                2 -> RoundedCornerShape(6.dp)
+                else -> CutCornerShape(4.dp)
+            },
+            tonalElevation = if (settings.lrcStyle == 1) 0.dp else 2.dp
+        ) {
+            Column(
+                Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (settings.showOriginal && state.original.isNotBlank()) {
+                    Text(
+                        state.original,
+                        color = Color.White,
+                        fontSize = settings.lrcFontSize.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (settings.showRomanized && state.romanized.isNotBlank()) {
+                    Text(
+                        state.romanized,
+                        color = theme.text.copy(alpha = 0.88f),
+                        fontSize = settings.lrcSubSize.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (settings.showTranslated && state.translated.isNotBlank()) {
+                    Text(
+                        state.translated,
+                        color = theme.accent.copy(alpha = 0.92f),
+                        fontSize = settings.lrcSubSize.sp,
+                        fontStyle = FontStyle.Italic,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -358,7 +510,7 @@ private fun FloatingOverlay(
                 IconButton(onClick = onClose) { Text("×") }
             }
             if (!settings.floatingMinimized) {
-                if (settings.floatingLyrics && settings.lrcMode != 0 &&
+                if (settings.floatingLyrics && settings.lrcMode == 2 &&
                     (state.original.isNotBlank() || state.romanized.isNotBlank() || state.translated.isNotBlank())
                 ) {
                     Column(
