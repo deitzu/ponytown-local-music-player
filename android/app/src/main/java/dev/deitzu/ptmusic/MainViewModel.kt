@@ -27,7 +27,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.concurrent.Executors
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val context = application.applicationContext
@@ -64,7 +63,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _audioSessionId = MutableStateFlow(store.getAudioSessionId())
     val audioSessionId = _audioSessionId.asStateFlow()
 
-    private val executor = Executors.newSingleThreadExecutor()
     private var lastLyricsId: Long? = null
 
     init {
@@ -165,16 +163,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteTrack(track: Track) {
+        if (_currentTrackId.value == track.id) _controller.value?.stop()
         viewModelScope.launch(Dispatchers.IO) {
-            if (_currentTrackId.value == track.id) _controller.value?.stop()
             store.removeTrack(track.id)
             refresh()
         }
     }
 
     fun clearAll() {
+        _controller.value?.stop()
         viewModelScope.launch(Dispatchers.IO) {
-            _controller.value?.stop()
             store.clearTracks()
             _lyrics.value = null
             lastLyricsId = null
@@ -259,7 +257,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _repeat.value = c.repeatMode
                 _volume.value = c.volume
             }.onFailure { _connected.value = false }
-        }, executor)
+        }, ContextCompat.getMainExecutor(context))
 
         viewModelScope.launch {
             while (true) {
@@ -300,7 +298,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         _controller.value?.release()
-        executor.shutdownNow()
         super.onCleared()
     }
 }
