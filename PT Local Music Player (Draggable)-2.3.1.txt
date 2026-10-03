@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PT Local Music Player (Draggable)
 // @namespace    http://tampermonkey.net/
-// @version      2.3.1
-// @description  Overhauled Local Player: Theme Engine, LRCLIB & Batch Romanization + Translation
+// @version      2.3.2
+// @description  Overhauled Local Player: Theme Engine, LRCLIB & Reliable Romanization + Translation
 // @author       deitzu
 // @match        https://pony.town/*
 // @grant        none
@@ -203,81 +203,201 @@
         }
     }
 
-    async function processRomanization(track) {
-        if (!track.lyrics || (track.romanizedLyrics && track.translatedLyrics) || !/[^\x00-\x7F]/.test(track.lyrics)) return;
-        
-        displayLyric("Menerjemahkan & Romaji...");
-        const lines = track.lyrics.split('\n');
-        let toTranslate = [], timeTags = [];
-        
-        lines.forEach(line => {
-            const match = line.match(/^(\[\d+:\d+(?:\.\d+)?\])(.*)/);
-            if(match) {
-                timeTags.push(match[1]);
-                toTranslate.push(match[2].trim());
-            }
-        });
-        
-        let chunked = [], currentChunk = [], charCount = 0;
-        toTranslate.forEach((text, i) => {
-            if (charCount + text.length > 800 || currentChunk.length >= 20) {
-                chunked.push(currentChunk);
-                currentChunk = [];
-                charCount = 0;
-            }
-            currentChunk.push({ idx: i, text: text });
-            charCount += text.length;
-        });
-        if (currentChunk.length > 0) chunked.push(currentChunk);
-        
-        let romanizedTextArray = new Array(toTranslate.length).fill("");
-        let translatedTextArray = new Array(toTranslate.length).fill("");
-        let activeRequests = 0;
-        let queue = [...chunked];
-        
-        await new Promise(resolve => {
-            function next() {
-                if (queue.length === 0 && activeRequests === 0) { resolve(); return; }
-                while(activeRequests < 3 && queue.length > 0) {
-                    let chunk = queue.shift();
-                    activeRequests++;
-                    let qText = chunk.map(c => c.text).join('\n');
-                    
-                    fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&dt=rm&q=${encodeURIComponent(qText)}`)
-                    .then(r => r.json())
-                    .then(data => {
-                        let outRom = "", outTrans = "";
-                        if (data[0]) {
-                            data[0].forEach(item => {
-                                if (typeof item[0] === 'string') outTrans += item[0];
-                                if (typeof item[2] === 'string' && item[2].trim() !== '') outRom += item[2];
-                                else if (typeof item[3] === 'string' && item[3].trim() !== '') outRom += item[3];
-                            });
-                        }
-                        let outLinesRom = outRom.split('\n');
-                        let outLinesTrans = outTrans.split('\n');
-                        chunk.forEach((c, i) => {
-                            romanizedTextArray[c.idx] = (outLinesRom[i] || "").trim();
-                            translatedTextArray[c.idx] = (outLinesTrans[i] || "").trim();
-                        });
-                    })
-                    .catch(() => {
-                        chunk.forEach((c) => { 
-                            romanizedTextArray[c.idx] = ""; 
-                            translatedTextArray[c.idx] = c.text; 
-                        });
-                    })
-                    .finally(() => {
-                        activeRequests--;
-                        next();
-                    });
+    const ROMANIZATION_LANGS = new Set([
+        'ar', 'am', 'bn', 'be', 'gu', 'hi', 'ja', 'kn',
+        'my', 'ru', 'sr', 'ta', 'te', 'uk', 'ko', 'zh-CN'
+    ]);
+
+    function detectRomanizationLanguage(text) {
+        if (!text || !/[^\\x00-\\x7F]/.test(text)) return null;
+
+        // Japanese: kana makes the distinction from Chinese reliable enough for this client.
+        if (/[\\u3040-\\u30FF\\u31F0-\\u31FF]/.test(text)) return 'ja';
+        if (/[\\uAC00-\\uD7AF]/.test(text)) return 'ko';
+
+        // CJK without kana is treated as Simplified Chinese on a best-effort basis.
+        if (/[\\u3400-\\u4DBF\\u4E00-\\u9FFF]/.test(text)) return 'zh-CN';
+
+        // Cyrillic languages with distinctive characters first.
+        if (/[ЇїЄєІіҐґ]/.test(text)) return 'uk';
+        if (/[Ўў]/.test(text)) return 'be';
+        if (/[ЈјЉљЊњЏџЂђЋћ]/.test(text)) return 'sr';
+        if (/[А-Яа-яЁё]/.test(text)) return 'ru';
+
+        if (/[\\u0900-\\u097F]/.test(text)) return 'hi';
+        if (/[\\u0980-\\u09FF]/.test(text)) return 'bn';
+        if (/[\\u0A80-\\u0AFF]/.test(text)) return 'gu';
+        if (/[\\u0C80-\\u0CFF]/.test(text)) return 'kn';
+        if (/[\\u0B80-\\u0BFF]/.test(text)) return 'ta';
+        if (/[\\u0C00-\\u0C7F]/.test(text)) return 'te';
+        if (/[\\u1000-\\u109F]/.test(text)) return 'my';
+        if (/[\\u1200-\\u137F]/.test(text)) return 'am';
+        if (/[\\u0600-\\u06FF\\u0750-\\u077F]/.test(text)) return 'ar';
+
+        return null;
+    }
+
+    function hasUsableRomanization(originalText, romanizedText) {
+        if (!romanizedText || !romanizedText.trim()) return false;
+
+        const original = originalText.trim().normalize('NFKC');
+        const romanized = romanizedText.trim().normalize('NFKC');
+
+        // Never accept the original script as a successful romanization.
+        if (romanized === original) return false;
+        if (!/[A-Za-z]/.test(romanized)) return false;
+
+        return true;
+    }
+
+    function extractRomanizedSentence(data, originalText) {
+        // Preferred modern response shape when dj=1 is enabled:
+        // { sentences: [{ src_translit: "..." }, ...] }
+        if (data && Array.isArray(data.sentences)) {
+            const result = data.sentences
+                .map(sentence => typeof sentence.src_translit === 'string' ? sentence.src_translit : '')
+                .filter(Boolean)
+                .join(' ')
+                .trim();
+
+            if (hasUsableRomanization(originalText, result)) return result;
+        }
+
+        // Legacy array response: transliteration is commonly in segment[2].
+        if (Array.isArray(data) && Array.isArray(data[0])) {
+            const candidates = [];
+
+            data[0].forEach(segment => {
+                if (!Array.isArray(segment)) return;
+                if (typeof segment[2] === 'string' && segment[2].trim()) {
+                    candidates.push(segment[2].trim());
                 }
+                if (typeof segment[3] === 'string' && segment[3].trim()) {
+                    candidates.push(segment[3].trim());
+                }
+            });
+
+            // Prefer a candidate that actually differs from the source.
+            for (const candidate of candidates) {
+                if (hasUsableRomanization(originalText, candidate)) return candidate;
             }
-            next();
+        }
+
+        return '';
+    }
+
+    async function romanizeLine(text, language) {
+        const params = new URLSearchParams();
+        params.set('client', 'gtx');
+        params.set('sl', language);
+        params.set('tl', 'en');
+        params.set('hl', 'en');
+        params.set('dj', '1');
+        params.set('source', 'bubble');
+        params.set('ie', 'UTF-8');
+        params.set('oe', 'UTF-8');
+        params.append('dt', 't');
+        params.append('dt', 'rm');
+        params.set('q', text);
+
+        const response = await fetch(
+            'https://translate.googleapis.com/translate_a/single?' + params.toString()
+        );
+
+        if (!response.ok) throw new Error('Romanization HTTP ' + response.status);
+
+        const data = await response.json();
+
+        return {
+            romanized: extractRomanizedSentence(data, text),
+            translated: Array.isArray(data?.sentences)
+                ? data.sentences
+                    .map(sentence => sentence.trans || '')
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim()
+                : ''
+        };
+    }
+
+    function parseTimestampedLyrics(text) {
+        return text.split(/\\r?\\n/).map(line => {
+            const match = line.match(/^(\\[\\d+:\\d+(?:\\.\\d+)?\\])(.*)$/);
+            return match ? { tag: match[1], text: match[2].trim() } : null;
         });
-        
-        track.romanizedLyrics = timeTags.map((tag, i) => tag + " " + romanizedTextArray[i]).join('\n');
-        track.translatedLyrics = timeTags.map((tag, i) => tag + " " + translatedTextArray[i]).join('\n');
+    }
+
+    async function processRomanization(track) {
+        if (!track || !track.lyrics) return;
+
+        const sourceLanguage = detectRomanizationLanguage(track.lyrics);
+        if (!sourceLanguage || !ROMANIZATION_LANGS.has(sourceLanguage)) return;
+
+        const sourceLines = parseTimestampedLyrics(track.lyrics);
+        const sourceTextLines = sourceLines.filter(Boolean).map(line => line.text);
+        if (!sourceTextLines.some(text => text)) return;
+
+        // Re-process stale caches from older builds, including "romaji == original".
+        const cachedLines = parseTimestampedLyrics(track.romanizedLyrics || '')
+            .filter(Boolean)
+            .map(line => line.text);
+
+        const cacheLooksUsable =
+            cachedLines.length === sourceTextLines.length &&
+            sourceTextLines.some((text, i) => hasUsableRomanization(text, cachedLines[i]));
+
+        if (cacheLooksUsable && track.translatedLyrics) return;
+
+        displayLyric("Menerjemahkan & Romaji...");
+
+        const romanizedByIndex = new Array(sourceLines.length).fill('');
+        const translatedByIndex = new Array(sourceLines.length).fill('');
+        let cursor = 0;
+
+        async function worker() {
+            while (true) {
+                const index = cursor++;
+                if (index >= sourceLines.length) return;
+
+                const line = sourceLines[index];
+                if (!line || !line.text) continue;
+
+                // Latin-only fragments need no romanization and should stay unchanged.
+                if (!/[^\\x00-\\x7F]/.test(line.text)) {
+                    romanizedByIndex[index] = line.text;
+                    translatedByIndex[index] = line.text;
+                    continue;
+                }
+
+                try {
+                    const result = await romanizeLine(line.text, sourceLanguage);
+
+                    romanizedByIndex[index] = hasUsableRomanization(line.text, result.romanized)
+                        ? result.romanized
+                        : '';
+
+                    translatedByIndex[index] = result.translated || '';
+                } catch (err) {
+                    console.warn('[PT Player] Romanization failed:', err);
+                }
+
+                // This endpoint is unofficial. Keep the request rate modest.
+                await new Promise(resolve => setTimeout(resolve, 120));
+            }
+        }
+
+        await Promise.all([worker(), worker()]);
+
+        track.romanizedLyrics = sourceLines.map((line, i) => {
+            if (!line) return '';
+            return line.tag + ' ' + (romanizedByIndex[i] || line.text);
+        }).join('\\n');
+
+        track.translatedLyrics = sourceLines.map((line, i) => {
+            if (!line) return '';
+            return line.tag + ' ' + (translatedByIndex[i] || line.text);
+        }).join('\\n');
+
         await updateTrack(track);
     }
 
