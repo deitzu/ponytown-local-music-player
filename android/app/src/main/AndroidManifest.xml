@@ -27,6 +27,10 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".floating.FloatingFilePickerActivity"
+            android:exported="false" />
+
         <service
             android:name=".audio.PlayerService"
             android:exported="true"
