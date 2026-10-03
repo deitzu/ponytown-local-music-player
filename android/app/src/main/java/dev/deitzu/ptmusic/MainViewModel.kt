@@ -1,5 +1,6 @@
 package dev.deitzu.ptmusic
 
+import android.Manifest
 import android.app.Application
 import android.content.ComponentName
 import android.content.Intent
@@ -73,7 +74,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
-            _tracks.value = library.mergeWithStored(library.scan(), store.loadTracks())
+            val permission = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                Manifest.permission.READ_MEDIA_AUDIO
+            } else {
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            }
+            if (ContextCompat.checkSelfPermission(context, permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                _tracks.value = store.loadTracks().filter { it.imported }
+                return@launch
+            }
+            _tracks.value = runCatching {
+                library.mergeWithStored(library.scan(), store.loadTracks())
+            }.getOrElse {
+                store.loadTracks().filter { it.imported }
+            }
         }
     }
 
