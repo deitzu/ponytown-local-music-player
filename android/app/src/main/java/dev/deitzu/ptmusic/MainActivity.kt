@@ -15,6 +15,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -206,7 +207,7 @@ private fun PTMusicApp(vm:MainViewModel){
                         title={Text("PT Local Music Player",fontWeight=FontWeight.Bold)},
                         actions={
                             IconButton(onClick=vm::refresh){Text("↻")}
-                            IconButton(onClick={setSettingsTrue@{settingsOpen=true}}){Text("⚙")}
+                            IconButton(onClick={settingsOpen=true}){Text("⚙")}
                         }
                     )
                 },
@@ -418,7 +419,7 @@ private fun SettingsSheet(s:PlayerSettings,onDismiss:()->Unit,onUpdate:((PlayerS
     val context=androidx.compose.ui.platform.LocalContext.current
     val theme=THEMES.getOrElse(s.theme){THEMES.first()}
     ModalBottomSheet(onDismissRequest=onDismiss){
-        Column(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(16.dp).navigationBarsPadding()){
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp).navigationBarsPadding()){
             Text("Settings",fontSize=22.sp,fontWeight=FontWeight.Bold)
             Text("Theme",color=theme.subtext,modifier=Modifier.padding(top=10.dp))
             Choice("Theme",THEMES.map{it.name},s.theme){i->onUpdate{it.copy(theme=i)}}
