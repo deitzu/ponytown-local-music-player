@@ -289,6 +289,9 @@ private class FloatingViewTreeOwner : SavedStateRegistryOwner {
 
     init {
         savedStateController.performAttach()
+        // A custom view-tree owner has no Activity state to restore. It still
+        // needs the registry transitioned through restore before ON_CREATE.
+        savedStateController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
     }
