@@ -36,8 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.setContent
-import androidx.compose.ui.platform.ViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -171,7 +170,7 @@ class FloatingPlayerService : LifecycleService() {
     private fun createOverlay() {
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val view = ComposeView(this)
-        ViewTreeLifecycleOwner.set(view, this)
+        view.setViewTreeLifecycleOwner(this)
         val pos = store.loadFloatingPosition()
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
