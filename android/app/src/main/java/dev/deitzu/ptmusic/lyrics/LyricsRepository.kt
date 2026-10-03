@@ -158,7 +158,7 @@ class LyricsRepository(private val store: AppStore) {
                 }
             }.trim()
             (if (valid(source, translit)) translit else "") to translation.ifBlank { source }
-        }.getOrDefault("" to source)
+        }.getOrNull() ?: ("" to source)
     }
 
     private fun valid(source: String, value: String): Boolean =
