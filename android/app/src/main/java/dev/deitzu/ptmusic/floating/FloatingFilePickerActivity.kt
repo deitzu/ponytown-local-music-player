@@ -2,14 +2,11 @@ package dev.deitzu.ptmusic.floating
 
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
-import androidx.core.content.ContextCompat
-import dev.deitzu.ptmusic.model.Track
-import dev.deitzu.ptmusic.storage.AppStore
 import dev.deitzu.ptmusic.library.MusicLibrary
+import dev.deitzu.ptmusic.storage.AppStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -34,11 +31,13 @@ class FloatingFilePickerActivity : ComponentActivity() {
                         uri,
                         Intent.FLAG_GRANT_READ_URI_PERMISSION
                     )
-                    store.upsertTrack(library.importUri(uri, store.loadSettings().autoTag))
+                    store.upsertTrack(
+                        library.importUri(uri, store.loadSettings().autoTag)
+                    )
                 }
             }
             refreshFloating()
-            finish()
+            withContext(Dispatchers.Main) { finish() }
         }
     }
 
@@ -72,14 +71,14 @@ class FloatingFilePickerActivity : ComponentActivity() {
                 }
             }
             refreshFloating()
-            finish()
+            withContext(Dispatchers.Main) { finish() }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         when (intent.getIntExtra(EXTRA_MODE, MODE_AUDIO)) {
-            MODE_LRC -> lrcPicker.launch(arrayOf("text/*", "application/octet-stream", ".lrc"))
+            MODE_LRC -> lrcPicker.launch(arrayOf("text/*", "application/octet-stream"))
             else -> audioPicker.launch(arrayOf("audio/*"))
         }
     }
