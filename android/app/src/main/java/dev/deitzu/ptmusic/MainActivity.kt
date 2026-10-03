@@ -64,6 +64,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.activity.compose.setContent
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -234,7 +235,7 @@ private fun PTMusicApp(vm:MainViewModel){
                                 Text(
                                     if(filters.contains(tag))"[$tag]" else tag,
                                     modifier=Modifier.clip(RoundedCornerShape(12.dp)).background(if(filters.contains(tag))theme.accent else theme.surface)
-                                        .clickable{filters=if(filters.contains(tag))filters-tag else(filters.filterNot{"Untagged"::equals} + tag)},
+                                        .clickable{filters=if(filters.contains(tag))filters-tag else(filters.filterNot{it=="Untagged"} + tag)},
                                     color=if(filters.contains(tag))Color.Black else theme.text,fontSize=11.sp
                                 ).padding(horizontal=9.dp,vertical=5.dp)
                             }
@@ -398,7 +399,7 @@ private fun VisualizerBars(levels:List<Float>,accent:Color){
         val gap=bw*.7f
         levels.forEachIndexed{i,v->
             val h=(size.height*(0.15f+v*.85f)).coerceAtLeast(2f)
-            drawRoundRect(accent,left=i*(bw+gap),top=size.height-h,right=i*(bw+gap)+bw,bottom=size.height,cornerRadius=androidx.compose.ui.geometry.CornerRadius(3f,3f))
+            drawRoundRect(color=accent,topLeft=androidx.compose.ui.geometry.Offset(i*(bw+gap),size.height-h),size=androidx.compose.ui.geometry.Size(bw,h),cornerRadius=androidx.compose.ui.geometry.CornerRadius(3f,3f))
         }
     }
 }
@@ -428,14 +429,14 @@ private fun SettingsSheet(s:PlayerSettings,onDismiss:()->Unit,onUpdate:((PlayerS
             SliderSetting("Main font",s.lrcFontSize.toFloat(),12f,24f){v->onUpdate{it.copy(lrcFontSize=v.toInt())}}
             SliderSetting("Sub font",s.lrcSubSize.toFloat(),10f,20f){v->onUpdate{it.copy(lrcSubSize=v.toInt())}}
             SliderSetting("LRC position",s.lrcPosPercent.toFloat(),5f,50f){v->onUpdate{it.copy(lrcPosPercent=v.toInt())}}
-            Toggle("Show original",s.showOriginal){onUpdate{it.copy(showOriginal=it)}}
-            Toggle("Show romanized",s.showRomanized){onUpdate{it.copy(showRomanized=it)}}
-            Toggle("Show translation",s.showTranslated){onUpdate{it.copy(showTranslated=it)}}
-            Toggle("Auto-fetch LRCLIB",s.autoFetch){onUpdate{it.copy(autoFetch=it)}}
-            Toggle("Auto-select first match",s.autoSelectLrc){onUpdate{it.copy(autoSelectLrc=it)}}
-            Toggle("Auto-tag ID3 genre",s.autoTag){onUpdate{it.copy(autoTag=it)}}
-            Toggle("Quick LRC offset",s.quickOffset){onUpdate{it.copy(quickOffset=it)}}
-            Toggle("Track-change toast",s.toastNotification){onUpdate{it.copy(toastNotification=it)}}
+            Toggle("Show original",s.showOriginal){checked->onUpdate{it.copy(showOriginal=checked)}}
+            Toggle("Show romanized",s.showRomanized){checked->onUpdate{it.copy(showRomanized=checked)}}
+            Toggle("Show translation",s.showTranslated){checked->onUpdate{it.copy(showTranslated=checked)}}
+            Toggle("Auto-fetch LRCLIB",s.autoFetch){checked->onUpdate{it.copy(autoFetch=checked)}}
+            Toggle("Auto-select first match",s.autoSelectLrc){checked->onUpdate{it.copy(autoSelectLrc=checked)}}
+            Toggle("Auto-tag ID3 genre",s.autoTag){checked->onUpdate{it.copy(autoTag=checked)}}
+            Toggle("Quick LRC offset",s.quickOffset){checked->onUpdate{it.copy(quickOffset=checked)}}
+            Toggle("Track-change toast",s.toastNotification){checked->onUpdate{it.copy(toastNotification=checked)}}
             Toggle("Audio visualizer",s.visualizer){
                 if(it&&ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)onVisualizerPermission()
                 else onUpdate{v->v.copy(visualizer=it)}
@@ -446,8 +447,8 @@ private fun SettingsSheet(s:PlayerSettings,onDismiss:()->Unit,onUpdate:((PlayerS
                 Button(onClick=onOpenOverlay,modifier=Modifier.fillMaxWidth()){Text("Grant overlay permission")}
             }
             Toggle("Floating player",s.floatingEnabled){if(it)onFloating()else onFloatingOff()}
-            Toggle("Floating lyrics",s.floatingLyrics){onUpdate{it.copy(floatingLyrics=it)}}
-            Toggle("Floating minimized",s.floatingMinimized){onUpdate{it.copy(floatingMinimized=it)}}
+            Toggle("Floating lyrics",s.floatingLyrics){checked->onUpdate{it.copy(floatingLyrics=checked)}}
+            Toggle("Floating minimized",s.floatingMinimized){checked->onUpdate{it.copy(floatingMinimized=checked)}}
             SliderSetting("Idle fade delay",s.idleFade,2f,10f){v->onUpdate{it.copy(idleFade=(v*2).toInt()/2f)}}
             SliderSetting("Idle opacity",s.idleOpacity,0.1f,1f){v->onUpdate{it.copy(idleOpacity=(v*10).toInt()/10f)}}
             Spacer(Modifier.height(12.dp))
