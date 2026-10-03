@@ -60,6 +60,12 @@ jobs:
           test -e "$ANDROID_HOME/platforms/android-37"
           test -d "$ANDROID_HOME/build-tools/37.0.0"
 
+      - name: Restore stable debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: ptmusic-debug-keystore-v1
+
       - name: Build debug APK
         run: gradle -p android :app:assembleDebug --stacktrace
 
