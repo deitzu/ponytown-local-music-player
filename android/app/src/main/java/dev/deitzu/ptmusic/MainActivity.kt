@@ -235,16 +235,18 @@ private fun PTMusicApp(vm:MainViewModel){
                                 Text(
                                     if(filters.contains(tag))"[$tag]" else tag,
                                     modifier=Modifier.clip(RoundedCornerShape(12.dp)).background(if(filters.contains(tag))theme.accent else theme.surface)
-                                        .clickable{filters=if(filters.contains(tag))filters-tag else(filters.filterNot{it=="Untagged"} + tag)},
+                                        .clickable{filters=if(filters.contains(tag))filters-tag else(filters.filterNot{it=="Untagged"} + tag)}
+                                    .padding(horizontal=9.dp,vertical=5.dp),
                                     color=if(filters.contains(tag))Color.Black else theme.text,fontSize=11.sp
-                                ).padding(horizontal=9.dp,vertical=5.dp)
+                                )
                             }
                             Text(
                                 if(filters.contains("Untagged"))"[Untagged]" else "Untagged",
                                 modifier=Modifier.clip(RoundedCornerShape(12.dp)).background(if(filters.contains("Untagged"))theme.accent else theme.surface)
-                                    .clickable{filters=if(filters.contains("Untagged"))emptyList() else listOf("Untagged")},
+                                    .clickable{filters=if(filters.contains("Untagged"))emptyList() else listOf("Untagged")}
+                                    .padding(horizontal=9.dp,vertical=5.dp),
                                 color=if(filters.contains("Untagged"))Color.Black else theme.text,fontSize=11.sp
-                            ).padding(horizontal=9.dp,vertical=5.dp)
+                            )
                             if(filters.isNotEmpty())TextButton(onClick={filters=emptyList()}){Text("Clear")}
                         }
                     }
