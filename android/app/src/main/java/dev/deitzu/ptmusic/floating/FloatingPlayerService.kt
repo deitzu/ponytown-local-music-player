@@ -142,13 +142,13 @@ private val FLOATING_THEMES = listOf(
 )
 
 class FloatingPlayerService : LifecycleService() {
-    private val store by lazy { AppStore(this) }
+    private lateinit var store: AppStore
     private val repo by lazy { LyricsRepository(store) }
-    private val library by lazy { dev.deitzu.ptmusic.library.MusicLibrary(this) }
+    private val library by lazy { dev.deitzu.ptmusic.library.MusicLibrary(applicationContext) }
 
     private val _state = MutableStateFlow(FloatingState())
     private val _tracks = MutableStateFlow<List<Track>>(emptyList())
-    private val _settings = MutableStateFlow(store.loadSettings())
+    private lateinit var _settings: MutableStateFlow<PlayerSettings>
     private val _lyrics = MutableStateFlow<LyricsBundle?>(null)
 
     private var controller: MediaController? = null
@@ -164,6 +164,8 @@ class FloatingPlayerService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
+        store = AppStore(applicationContext)
+        _settings = MutableStateFlow(store.loadSettings())
         if (!Settings.canDrawOverlays(this)) {
             stopSelf()
             return
