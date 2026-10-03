@@ -11,8 +11,8 @@ android {
         applicationId = "dev.deitzu.ptmusic"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {
@@ -46,6 +46,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:$activity")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycle")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycle")
+    implementation("androidx.lifecycle:lifecycle-service:$lifecycle")
 
     implementation("androidx.compose.ui:ui:$composeUi")
     implementation("androidx.compose.ui:ui-tooling-preview:$composeUi")
