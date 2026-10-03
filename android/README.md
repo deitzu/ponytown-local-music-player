@@ -13,6 +13,12 @@ Current foundation:
 - title/artist/album search
 - LRC parser foundation
 - Android 8.0+ minimum
+- persistent uncaught-exception crash logging
+
+Crash reports are written to the app's external files directory at:
+`Android/data/dev.deitzu.ptmusic/files/logs/last_crash.txt`
+
+If the external files directory is unavailable, the app falls back to its private internal `files/logs/last_crash.txt` path.
 
 The original Pony Town userscript is kept separate and is not required by the native app.
 
