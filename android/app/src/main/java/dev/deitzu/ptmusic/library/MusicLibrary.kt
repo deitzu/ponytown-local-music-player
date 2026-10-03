@@ -1,6 +1,7 @@
 package dev.deitzu.ptmusic.library
 
 import android.content.ContentResolver
+import android.content.Context
 import android.content.ContentUris
 import android.database.Cursor
 import android.media.MediaMetadataRetriever
@@ -8,7 +9,8 @@ import android.provider.MediaStore
 import android.provider.OpenableColumns
 import dev.deitzu.ptmusic.model.Track
 
-class MusicLibrary(private val resolver: ContentResolver) {
+class MusicLibrary(private val context: Context) {
+    private val resolver = context.contentResolver
     fun scan(): List<Track> {
         val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         val projection = arrayOf(
@@ -56,7 +58,7 @@ class MusicLibrary(private val resolver: ContentResolver) {
         var genre = ""
         var duration = 0L
         try {
-            retriever.setDataSource(resolver, uri)
+            retriever.setDataSource(context, uri)
             title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)?.trim().orEmpty().ifBlank { fallback }
             artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)?.trim().orEmpty()
             album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)?.trim().orEmpty()
