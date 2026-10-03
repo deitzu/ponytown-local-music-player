@@ -1,41 +1,57 @@
 package dev.deitzu.ptmusic.lyrics
 
-data class LrcLine(
+data class LrcLine(val timeMs: Long, val text: String)
+
+data class LyricLineBundle(
     val timeMs: Long,
-    val text: String
+    val original: String,
+    val romanized: String = "",
+    val translated: String = ""
 )
 
 object LrcParser {
+    private val prefix = Regex("""^\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\](.*)$""")
 
-    private val timestamp = Regex("""[(d{1,3}):(d{2})(?:.(d{1,3}))?](.*)""")
-
-    fun parse(input: String): List<LrcLine> {
-        return input
-            .lineSequence()
-            .mapNotNull { line ->
-                val match = timestamp.matchEntire(line.trim()) ?: return@mapNotNull null
-                val minutes = match.groupValues[1].toLong()
-                val seconds = match.groupValues[2].toLong()
-                val fraction = match.groupValues[3]
-
-                val millis = when (fraction.length) {
+    fun parse(input: String, offsetMs: Long = 0L): List<LrcLine> {
+        if (input.isBlank()) return emptyList()
+        val out = mutableListOf<LrcLine>()
+        input.lineSequence().forEach { raw ->
+            var line = raw.trim()
+            while (true) {
+                val m = prefix.matchEntire(line) ?: break
+                val min = m.groupValues[1].toLongOrNull() ?: break
+                val sec = m.groupValues[2].toLongOrNull() ?: break
+                val f = m.groupValues[3]
+                val ms = when (f.length) {
                     0 -> 0L
-                    1 -> fraction.toLong() * 100L
-                    2 -> fraction.toLong() * 10L
-                    else -> fraction.take(3).toLong()
+                    1 -> f.toLong() * 100L
+                    2 -> f.toLong() * 10L
+                    else -> f.take(3).toLong()
                 }
-
-                LrcLine(
-                    timeMs = minutes * 60_000L + seconds * 1_000L + millis,
-                    text = match.groupValues[4].trim()
+                out += LrcLine(
+                    (min * 60_000L + sec * 1_000L + ms + offsetMs).coerceAtLeast(0L),
+                    m.groupValues[4].trim()
                 )
+                line = m.groupValues[4].trim()
             }
-            .filter { it.text.isNotBlank() }
-            .sortedBy(LrcLine::timeMs)
-            .toList()
+        }
+        return out.filter { it.text.isNotBlank() }.sortedBy { it.timeMs }
     }
 
-    fun lineAt(lines: List<LrcLine>, positionMs: Long): LrcLine? {
-        return lines.lastOrNull { it.timeMs <= positionMs }
+    fun merge(original: String, romanized: String, translated: String, offsetMs: Long): List<LyricLineBundle> {
+        val o = parse(original, offsetMs)
+        val r = parse(romanized, offsetMs)
+        val t = parse(translated, offsetMs)
+        return o.mapIndexed { index, value ->
+            LyricLineBundle(
+                value.timeMs,
+                value.text,
+                r.getOrNull(index)?.text.orEmpty(),
+                t.getOrNull(index)?.text.orEmpty()
+            )
+        }
     }
+
+    fun lineAt(lines: List<LyricLineBundle>, positionMs: Long): LyricLineBundle? =
+        lines.lastOrNull { it.timeMs <= positionMs }
 }
