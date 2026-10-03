@@ -87,10 +87,16 @@ class LyricsRepository(private val store: AppStore) {
     }
 
     private fun lookup(track: Track): String? {
-        val url = "https://lrclib.net/api/get?artist_name=" +
-            URLEncoder.encode(track.artist, "UTF-8") +
-            "&track_name=" + URLEncoder.encode(track.title, "UTF-8")
-        val raw = request(url) ?: return null
+        val params = buildList {
+            add("artist_name=" + URLEncoder.encode(track.artist, "UTF-8"))
+            add("track_name=" + URLEncoder.encode(track.title, "UTF-8"))
+            if (track.album.isNotBlank() && !track.album.equals("Unknown album", true)) {
+                add("album_name=" + URLEncoder.encode(track.album, "UTF-8"))
+            }
+            val durationSec = (track.durationMs / 1000L).takeIf { it in 1L..3600L }
+            if (durationSec != null) add("duration=$durationSec")
+        }.joinToString("&")
+        val raw = request("https://lrclib.net/api/get?$params") ?: return null
         return runCatching {
             JSONObject(raw).optString("syncedLyrics").takeIf { it.isNotBlank() }
         }.getOrNull()
@@ -189,6 +195,11 @@ class LyricsRepository(private val store: AppStore) {
         connection.requestMethod = "GET"
         connection.connectTimeout = 8_000
         connection.readTimeout = 12_000
+        connection.setRequestProperty(
+            "User-Agent",
+            "PT Local Music Player/0.2.0 (https://github.com/deitzu/ponytown-local-music-player)"
+        )
+        connection.setRequestProperty("Accept", "application/json")
         try {
             if (connection.responseCode !in 200..299) null
             else connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
