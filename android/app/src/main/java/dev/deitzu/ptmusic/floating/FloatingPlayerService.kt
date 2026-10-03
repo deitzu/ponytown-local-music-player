@@ -1064,7 +1064,7 @@ private fun SliderSetting(label: String, value: Float, min: Float, max: Float, o
 }
 
 @Composable
-private fun TinyButton(label: String, onClick: () -> Unit, active: Boolean, theme: FloatingTheme) {
+private fun androidx.compose.foundation.layout.RowScope.TinyButton(label: String, onClick: () -> Unit, active: Boolean, theme: FloatingTheme) {
     TextButton(
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
@@ -1075,7 +1075,7 @@ private fun TinyButton(label: String, onClick: () -> Unit, active: Boolean, them
 }
 
 @Composable
-private fun SmallAction(label: String, onClick: () -> Unit, theme: FloatingTheme) {
+private fun androidx.compose.foundation.layout.RowScope.SmallAction(label: String, onClick: () -> Unit, theme: FloatingTheme) {
     TextButton(onClick = onClick, modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 0.dp)) {
         Text(label, color = theme.text, fontSize = 10.sp)
     }
