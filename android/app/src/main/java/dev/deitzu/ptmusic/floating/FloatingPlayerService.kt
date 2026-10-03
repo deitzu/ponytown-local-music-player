@@ -41,8 +41,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import dev.deitzu.ptmusic.MainActivity
@@ -52,11 +59,9 @@ import dev.deitzu.ptmusic.lyrics.LyricsRepository
 import dev.deitzu.ptmusic.model.Track
 import dev.deitzu.ptmusic.storage.AppStore
 import dev.deitzu.ptmusic.storage.PlayerSettings
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import java.util.concurrent.Executors
 
 data class FloatingState(
     val title: String = "PT Local Music Player",
@@ -81,7 +86,7 @@ class FloatingPlayerService : LifecycleService() {
     private var lastInteraction = System.currentTimeMillis()
     private var lyricTrackId: Long? = null
     private var lyricLines = emptyList<dev.deitzu.ptmusic.lyrics.LyricLineBundle>()
-    private var executor: java.util.concurrent.ExecutorService? = null
+    private var viewTreeOwner: FloatingViewTreeOwner? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -92,7 +97,7 @@ class FloatingPlayerService : LifecycleService() {
         startOverlayForeground()
         createOverlay()
         connectController()
-        lifecycleScope.launch(Dispatchers.Default) {
+        lifecycleScope.launch {
             while (true) {
                 val c = controller
                 val id = c?.currentMediaItem?.mediaId?.toLongOrNull()
@@ -154,7 +159,6 @@ class FloatingPlayerService : LifecycleService() {
     private fun connectController() {
         val token = SessionToken(this, ComponentName(this, PlayerService::class.java))
         val future = MediaController.Builder(this, token).buildAsync()
-        executor = Executors.newSingleThreadExecutor()
         future.addListener(
             {
                 runCatching { future.get() }
@@ -163,14 +167,17 @@ class FloatingPlayerService : LifecycleService() {
                         Toast.makeText(this, "Player connection failed", Toast.LENGTH_SHORT).show()
                     }
             },
-            executor!!
+            ContextCompat.getMainExecutor(this)
         )
     }
 
     private fun createOverlay() {
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val view = ComposeView(this)
-        view.setViewTreeLifecycleOwner(this)
+        val owner = FloatingViewTreeOwner()
+        viewTreeOwner = owner
+        view.setViewTreeLifecycleOwner(owner)
+        view.setViewTreeSavedStateRegistryOwner(owner)
         val pos = store.loadFloatingPosition()
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -257,12 +264,13 @@ class FloatingPlayerService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        runCatching { composeView?.disposeComposition() }
         runCatching { windowManager?.let { wm -> composeView?.let { wm.removeView(it) } } }
         composeView = null
+        viewTreeOwner?.destroy()
+        viewTreeOwner = null
         controller?.release()
         controller = null
-        executor?.shutdownNow()
-        executor = null
         windowManager = null
         layout = null
         super.onDestroy()
@@ -272,6 +280,28 @@ class FloatingPlayerService : LifecycleService() {
         const val ACTION_START = "dev.deitzu.ptmusic.FLOATING_START"
         const val ACTION_REFRESH = "dev.deitzu.ptmusic.FLOATING_REFRESH"
         const val ACTION_STOP = "dev.deitzu.ptmusic.FLOATING_STOP"
+    }
+}
+
+private class FloatingViewTreeOwner : SavedStateRegistryOwner {
+    private val lifecycleRegistry = LifecycleRegistry(this)
+    private val savedStateController = SavedStateRegistryController.create(this)
+
+    init {
+        savedStateController.performAttach()
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+    }
+
+    override val lifecycle: Lifecycle
+        get() = lifecycleRegistry
+
+    override val savedStateRegistry: SavedStateRegistry
+        get() = savedStateController.savedStateRegistry
+
+    fun destroy() {
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
     }
 }
 
