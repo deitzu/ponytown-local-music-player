@@ -46,11 +46,18 @@ jobs:
           fi
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-37" "build-tools;37.0.0"
+          "$SDKMANAGER" "platforms;android-37.0" "build-tools;37.0.0"
+
+          # GitHub's Ubuntu 24.04 image exposes API 37 as android-37.0,
+          # while older Android tooling may still resolve the target as android-37.
+          if [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s "android-37.0" "$ANDROID_HOME/platforms/android-37"
+          fi
 
       - name: Verify Android SDK
         run: |
-          test -d "$ANDROID_HOME/platforms/android-37"
+          test -d "$ANDROID_HOME/platforms/android-37.0"
+          test -e "$ANDROID_HOME/platforms/android-37"
           test -d "$ANDROID_HOME/build-tools/37.0.0"
 
       - name: Build debug APK
