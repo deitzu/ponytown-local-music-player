@@ -131,6 +131,8 @@ private fun PTMusicApp(vm:MainViewModel){
     var pendingLrc by remember{mutableStateOf<Track?>(null)}
     var toastVisible by remember{mutableStateOf(false)}
     var lastToastId by remember{mutableLongStateOf(Long.MIN_VALUE)}
+    var permissionsOpen by remember{mutableStateOf(false)}
+    var permissionPrompted by remember{mutableStateOf(false)}
 
     val visualizer=remember{AudioVisualizer(context)}
     val levels by visualizer.levels.collectAsState()
@@ -157,12 +159,30 @@ private fun PTMusicApp(vm:MainViewModel){
         }
     }
 
-    LaunchedEffect(Unit){
-        val p=buildList{
-            add(if(Build.VERSION.SDK_INT>=33)Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
-            if(Build.VERSION.SDK_INT>=33)add(Manifest.permission.POST_NOTIFICATIONS)
+    fun missingPermissions(): List<String> = buildList {
+        val audioPermission = if (Build.VERSION.SDK_INT >= 33) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
         }
-        permissionLauncher.launch(p.toTypedArray())
+        if (ContextCompat.checkSelfPermission(context, audioPermission) != PackageManager.PERMISSION_GRANTED) {
+            add(audioPermission)
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            add(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!permissionPrompted) {
+            permissionPrompted = true
+            if (missingPermissions().isNotEmpty()) permissionsOpen = true
+        }
     }
     LaunchedEffect(settings.visualizer,sessionId){
         if(settings.visualizer&&ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED)visualizer.start(sessionId)
@@ -178,6 +198,37 @@ private fun PTMusicApp(vm:MainViewModel){
             delay(3000)
             toastVisible=false
         }
+    }
+
+    if (permissionsOpen) {
+        AlertDialog(
+            onDismissRequest = { permissionsOpen = false },
+            title = { Text("Permissions") },
+            text = {
+                Column {
+                    Text("The player needs these Android permissions for music scanning, notifications, and the optional audio visualizer.")
+                    Spacer(Modifier.height(10.dp))
+                    Text("• Music and audio: scan local music")
+                    if (Build.VERSION.SDK_INT >= 33) Text("• Notifications: playback/media controls")
+                    Text("• Microphone: audio visualizer")
+                    if (!Settings.canDrawOverlays(context)) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Floating player uses a separate overlay permission from Android Settings.")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    permissionsOpen = false
+                    missingPermissions().takeIf { it.isNotEmpty() }?.let {
+                        permissionLauncher.launch(it.toTypedArray())
+                    }
+                }) { Text("Grant") }
+            },
+            dismissButton = {
+                TextButton(onClick = { permissionsOpen = false }) { Text("Not now") }
+            }
+        )
     }
 
     val current=tracks.firstOrNull{it.id==currentId}
