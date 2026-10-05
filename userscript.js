@@ -331,7 +331,7 @@
     overlay.id = 'pt-lyric-overlay';
     overlay.innerHTML = `<style>
         #pt-lyric-overlay { position: fixed; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; z-index: 999998; transition: bottom 0.2s; white-space: pre-wrap; font-family: sans-serif; font-weight:bold; display: flex; flex-direction: column; align-items: center; gap: 4px;}
-        .lyric-yt { background: rgba(0,0,0,0.6); padding: 4px 12px; border-radius: 6px; color: #fff; text-shadow: none; }
+        .lyric-yt { background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 0; color: #fff; text-shadow: none; }
         .lyric-glow { background: transparent; color: #fff; text-shadow: 2px 2px 3px #000, -2px -2px 3px #000, 2px -2px 3px #000, -2px 2px 3px #000; }
         .lyric-glass { background: rgba(255,255,255,0.1); backdrop-filter: blur(6px); padding: 4px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); color: #fff; text-shadow: 1px 1px 2px #000;}
         #pt-qoff-panel { pointer-events: auto; display: none; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 12px; font-size: 10px; color: #fff; border: 1px solid #555; align-items: center; gap: 6px; backdrop-filter: blur(2px);}
