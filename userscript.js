@@ -227,7 +227,7 @@
             .pt-set-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
             .pt-set-row select, .pt-set-row input[type="range"] { width: 85px; background: #333; color: #fff; border: 1px solid #555; border-radius:3px; outline:none;}
             .pt-mp-controls, .pt-mp-controls-2 { display: flex; gap: 4px; margin-bottom: 8px; align-items: center;}
-            .pt-mp-controls button, .pt-btn { margin: 0; display: flex; align-items: center; justify-content: center; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 12px; flex: 1 1 0; text-align: center; height: 26px; box-sizing: border-box; }
+            .pt-mp-controls button, .pt-btn { margin: 0; display: flex; align-items: center; justify-content: center; background: #333; color: #fff; border: none; border-bottom: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 12px; flex: 1 1 0; text-align: center; height: 26px; box-sizing: border-box; }
             .pt-mp-controls button:active, .pt-btn:active { background: #555; }
             .btn-active { background: var(--pt-th) !important; color: #000 !important; }
             
@@ -250,7 +250,7 @@
             .pt-mp-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             .pt-mp-item-artist { font-size: 9px; color: #aaa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             .pt-mp-acts { display: flex; gap: 4px; }
-            .pt-mp-lrc-btn, .pt-mp-del { background:#333; border:1px solid #555; color: #ddd; border-radius:3px; cursor: pointer; font-size: 10px; padding: 2px 4px; display:flex; align-items:center; justify-content:center;}
+            .pt-mp-lrc-btn, .pt-mp-del { background:#333; border: none; border-bottom: 1px solid #555; color: #ddd; border-radius:3px; cursor: pointer; font-size: 10px; padding: 2px 4px; display:flex; align-items:center; justify-content:center;}
             .pt-mp-del { color: #e57373; font-weight: bold;}
             #pt-embedded-lrc { display: none; text-align: center; font-style: italic; color: var(--pt-th); font-size: 11px; padding: 4px; border-bottom: 1px dashed #444; margin-bottom: 5px; min-height: 15px;}
             input[type="file"] { display: none; }
