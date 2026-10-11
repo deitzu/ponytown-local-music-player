@@ -1,11 +1,11 @@
 # PT Local Music Player
 
 [![Tampermonkey](https://img.shields.io/badge/Userscript-Tampermonkey-blue?style=flat-square)](https://www.tampermonkey.net/)
-[![Userscript](https://img.shields.io/badge/userscript-2.3.2-orange?style=flat-square)](userscript.js)
+[![Userscript](https://img.shields.io/badge/userscript-2.4.0-orange?style=flat-square)](userscript.js)
 [![Android](https://img.shields.io/badge/android-0.2.0-3ddc84?style=flat-square)](android/README.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/deitzu/ponytown-local-music-player?style=social)](https://github.com/deitzu/ponytown-local-music-player/stargazers)
-[![Lines of Code](https://img.shields.io/badge/LoC-1128-brightgreen?style=flat-square)](userscript.js)
+[![Lines of Code](https://img.shields.io/badge/LoC-1322-brightgreen?style=flat-square)](userscript.js)
 
 ![Screenshot](Screenshot_2026-09-06-14-14-36-218-edit_com.lemurbrowser.exts.jpg)
 
@@ -145,6 +145,17 @@ Full details, permissions, and build notes: [`android/README.md`](android/README
 ---
 
 ## Changelog
+
+### v2.4.0 — Searchable Library and UI Improvements
+*Oct 11, 2026*
+
+- Search the playlist by title, artist, album, and tags; playback navigation follows the search and active tag filters
+- Responsive player sizing and drag boundaries for small screens
+- Lyrics overlay with smoother transitions, wrapping, and adjustable subtitle background opacity
+- Import progress, duplicate detection, per-track metadata editing, and delete confirmations
+- Preserves the v2.3.x theme engine and original / romanized / translated lyric display
+
+---
 
 ### v2.3.2 — Reliable Romanization
 *Oct 5, 2026*
