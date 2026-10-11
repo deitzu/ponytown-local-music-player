@@ -125,13 +125,13 @@
 
         for (let i = 0; i < fileArray.length; i++) {
             const file = fileArray[i];
-            qs('#pt-mp-header-title').innerText = 'Import ' + (i + 1) + '/' + fileArray.length;
-            importStatusEl.textContent = 'Membaca metadata: ' + file.name;
+            qs('#pt-mp-header-title').innerText = 'Importing ' + (i + 1) + '/' + fileArray.length;
+            importStatusEl.textContent = 'Reading metadata: ' + file.name;
             const meta = await parseNativeID3(file);
             const sourceKey = [String(file.name).toLowerCase(), file.size, file.lastModified || 0].join('::');
             if (knownKeys.has(sourceKey)) {
                 skipped++; importProgress.value = i + 1;
-                importStatusEl.textContent = 'Duplikat dilewati: ' + file.name;
+                importStatusEl.textContent = 'Skipped duplicate: ' + file.name;
                 continue;
             }
             const normalize = value => String(value || '').trim().toLocaleLowerCase();
@@ -141,9 +141,9 @@
                 normalize(track.album) === normalize(meta.album) &&
                 track.blob && Number(track.blob.size) === Number(file.size)
             );
-            if (legacyDuplicate && !confirm('Kemungkinan duplikat lagu lama: "' + (meta.title || file.name) + '". Impor tetap dilanjutkan?')) {
+            if (legacyDuplicate && !confirm('A similar track may already exist: "' + (meta.title || file.name) + '". Import anyway?')) {
                 skipped++; importProgress.value = i + 1;
-                importStatusEl.textContent = "Dilewati: " + (meta.title || file.name);
+                importStatusEl.textContent = "Skipped: " + (meta.title || file.name);
                 continue;
             }
             knownKeys.add(sourceKey);
@@ -154,7 +154,7 @@
                 sourceKey, sourceName: file.name, sourceSize: file.size, sourceLastModified: file.lastModified || 0
             });
             importProgress.value = i + 1;
-            importStatusEl.textContent = (i + 1) + '/' + fileArray.length + ' diproses · ' + itemsToSave.length + ' baru · ' + skipped + ' dilewati';
+            importStatusEl.textContent = (i + 1) + '/' + fileArray.length + ' processed · ' + itemsToSave.length + ' new · ' + skipped + ' skipped';
         }
         if (itemsToSave.length) {
             const db = await openDB();
@@ -162,13 +162,13 @@
             itemsToSave.forEach(item => tx.objectStore(STORE_NAME).add(item));
             await new Promise((resolve, reject) => {
                 tx.oncomplete = resolve;
-                tx.onerror = () => reject(tx.error || new Error('Gagal menyimpan database'));
-                tx.onabort = () => reject(tx.error || new Error('Impor dibatalkan'));
+                tx.onerror = () => reject(tx.error || new Error('Failed to save to the database'));
+                tx.onabort = () => reject(tx.error || new Error('Import was cancelled'));
             });
             db.close();
         }
         importProgress.value = fileArray.length;
-        importStatusEl.textContent = 'Selesai: ' + itemsToSave.length + ' ditambahkan, ' + skipped + ' duplikat/dilewati';
+        importStatusEl.textContent = 'Import complete: ' + itemsToSave.length + ' added, ' + skipped + ' duplicates skipped';
         return { added: itemsToSave.length, skipped };
     }
 
@@ -402,7 +402,7 @@
 
         if (cacheLooksUsable && track.translatedLyrics) return;
 
-        displayLyric("Menerjemahkan & Romaji...");
+        displayLyric("Translating and romanizing...");
 
         const romanizedByIndex = new Array(sourceLines.length).fill('');
         const translatedByIndex = new Array(sourceLines.length).fill('');
@@ -563,17 +563,17 @@
         </div>
         <div id="pt-settings-panel">
             <div class="pt-set-row"><span>Theme:</span><select id="pt-set-th">${THEMES.map((t,i) => `<option value="${i}">${t.name}</option>`).join('')}</select></div>
-            <div class="pt-set-row"><span>Lrc Mode:</span><select id="pt-set-mode"><option value="0">Off</option><option value="1">Overlay</option><option value="2">Embedded</option></select></div>
-            <div class="pt-set-row"><span>Lrc Style:</span><select id="pt-set-style"><option value="0">YouTube</option><option value="1">Glow</option><option value="2">Glass</option></select></div>
+            <div class="pt-set-row"><span>Lyrics Mode:</span><select id="pt-set-mode"><option value="0">Off</option><option value="1">Overlay</option><option value="2">Embedded</option></select></div>
+            <div class="pt-set-row"><span>Lyrics Style:</span><select id="pt-set-style"><option value="0">YouTube</option><option value="1">Glow</option><option value="2">Glass</option></select></div>
 
             <div class="pt-set-row" style="justify-content: flex-start; gap: 8px; flex-wrap: wrap; border-top:1px dashed var(--pt-border); padding-top:6px; margin-top:6px;">
-                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" id="pt-set-showori"> Ori</label>
+                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" id="pt-set-showori"> Original</label>
                 <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" id="pt-set-showrom"> Romaji</label>
-                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" id="pt-set-showtrs"> Trans</label>
+                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" id="pt-set-showtrs"> Translation</label>
             </div>
 
-            <div class="pt-set-row" style="margin-top:4px;"><span>Sub Size:</span><input type="range" id="pt-set-rsize" min="10" max="20" value="13"></div>
-            <div class="pt-set-row"><span>Lrc Pos (Y):</span><input type="range" id="pt-set-bot" min="5" max="50" value="20"></div>
+            <div class="pt-set-row" style="margin-top:4px;"><span>Subtitle Size:</span><input type="range" id="pt-set-rsize" min="10" max="20" value="13"></div>
+            <div class="pt-set-row"><span>Lyrics Y Position:</span><input type="range" id="pt-set-bot" min="5" max="50" value="20"></div>
             <div class="pt-set-row"><span>Font Size:</span><input type="range" id="pt-set-size" min="12" max="24" value="16"></div>
             <div class="pt-set-row"><span>Subtitle BG:</span><input type="range" id="pt-set-bgop" min="0" max="1" step="0.05" value="0.6"></div>
             <div class="pt-set-row"><span>Idle Fade (s):</span><input type="range" id="pt-set-idlesec" min="2" max="10" step="0.5" value="3.5"></div>
@@ -850,7 +850,7 @@
         toggleListBtn.innerText = isListOpen ? '▼ List' : '▲ List';
     };
     qs('#pt-clear-all').onclick = async () => {
-        if(confirm("Hapus semua lagu dari database?")) {
+        if(confirm("Delete all tracks from the database? This cannot be undone.")) {
             await clearAll(); audio.pause(); currentIndex = -1; playlist = [];
             titleEl.innerText = '-'; artistEl.innerText = '-'; timeEl.innerText="00:00 / 00:00"; seekEl.value=0;
             displayLyric(""); titleEl.classList.remove('is-marquee'); refreshUI();
@@ -987,7 +987,7 @@
             return parseLRC(track);
         }
         if (!userSettings.autoFetch || !track.artist || !track.name) return parseLRC(track);
-        displayLyric("Mencari lirik online...");
+        displayLyric("Searching for lyrics online...");
         try {
             if (userSettings.autoSelectLrc) {
                 const res = await fetch(`https://lrclib.net/api/get?artist_name=${encodeURIComponent(track.artist)}&track_name=${encodeURIComponent(track.name)}`);
@@ -1003,7 +1003,7 @@
                 const results = await res.json();
                 const synced = results.filter(r => r.syncedLyrics);
                 if (synced.length > 0) {
-                    let promptText = "Lirik auto-fetch ditemukan, pilih versi:\n";
+                    let promptText = "Synced lyrics were found automatically. Select a version:\n";
                     synced.slice(0, 5).forEach((r, i) => {
                         let dur = Math.floor(r.duration / 60) + ":" + String(Math.floor(r.duration % 60)).padStart(2, '0');
                         promptText += `${i+1}. [${dur}] ${r.trackName} (${r.albumName || 'Single'})\n`;
@@ -1074,7 +1074,7 @@
                 await updateTrack(trk);
                 await processRomanization(trk);
                 if(currentIndex > -1 && playlist[currentIndex].id === targetUploadTrackId) parseLRC(trk);
-                alert("Lirik berhasil disimpan!"); refreshUI();
+                alert("Lyrics saved successfully!"); refreshUI();
             }
         };
         reader.readAsText(file); lrcFileIn.value = '';
@@ -1201,19 +1201,19 @@
             const lrcBtn = document.createElement('button'); lrcBtn.className = 'pt-mp-lrc-btn'; lrcBtn.innerText = '+LRC';
             lrcBtn.onclick = async (e) => {
                 e.stopPropagation();
-                let action = prompt(`Cari Lirik: ${track.name}\n\nKetik query manual (Kosongkan lalu OK untuk upload .lrc):`, `${track.artist} ${track.name}`);
+                let action = prompt(`Search Lyrics: ${track.name}\n\nEnter a query (leave empty and press OK to upload an .lrc file):`, `${track.artist} ${track.name}`);
                 if (action === null) return;
                 if (action.trim() === "") {
                     targetUploadTrackId = track.id; lrcFileIn.click();
                 } else {
-                    displayLyric("Mencari lirik...");
+                    displayLyric("Searching for lyrics...");
                     try {
                         let res = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(action.trim())}`);
                         let results = await res.json();
                         let synced = results.filter(r => r.syncedLyrics);
-                        if(synced.length === 0) { alert("Lirik synced tidak ditemukan."); displayLyric(""); return; }
+                        if(synced.length === 0) { alert("No synced lyrics were found."); displayLyric(""); return; }
 
-                        let promptText = "Pilih versi (Ketik Angka):\n";
+                        let promptText = "Select a version (enter a number):\n";
                         synced.slice(0, 8).forEach((r, i) => {
                             let dur = Math.floor(r.duration / 60) + ":" + String(Math.floor(r.duration % 60)).padStart(2, '0');
                             promptText += `${i+1}. [${dur}] ${r.trackName} - ${r.artistName} (${r.albumName || 'Single'})\n`;
@@ -1226,17 +1226,17 @@
                             await updateTrack(track);
                             await processRomanization(track);
                             if (idx === currentIndex) parseLRC(track);
-                            alert("Lirik berhasil diupdate!");
+                            alert("Lyrics updated successfully!");
                             refreshUI();
                         } else { displayLyric(""); }
-                    } catch(err) { alert("Error mencari lirik."); displayLyric(""); }
+                    } catch(err) { alert("Failed to search for lyrics."); displayLyric(""); }
                 }
             };
 
             const delBtn = document.createElement('button'); delBtn.className = 'pt-mp-del'; delBtn.innerText = '✕';
             delBtn.onclick = async (e) => {
                 e.stopPropagation();
-                if (!confirm('Hapus "' + (track.name || 'Untitled') + '" dari playlist?')) return;
+                if (!confirm('Delete "' + (track.name || 'Untitled') + '" from the playlist?')) return;
                 await deleteTrack(track.id);
                 if (idx === currentIndex) { audio.pause(); titleEl.innerText = '-'; artistEl.innerText = '-'; currentIndex = -1; timeEl.innerText="00:00 / 00:00"; seekEl.value=0; displayLyric(""); checkMarquee(); }
                 else if (idx < currentIndex) currentIndex--;
@@ -1248,7 +1248,7 @@
         if (visibleCount === 0) {
             const empty = document.createElement('div');
             empty.style.cssText = 'text-align:center;color:var(--pt-subtext);padding:12px 6px;line-height:1.4;';
-            empty.textContent = playlist.length ? 'Tidak ada lagu yang cocok dengan filter/pencarian.' : 'Playlist kosong. Tekan + Add untuk mengimpor lagu.';
+            empty.textContent = playlist.length ? 'No tracks match the current search or filters.' : 'Playlist is empty. Click + Add to import tracks.';
             listEl.appendChild(empty);
         }
     }
@@ -1312,9 +1312,9 @@
         } catch (error) {
             console.error('PT Music Player import failed', error);
             importProgressWrap.style.display = 'flex';
-            importStatusEl.textContent = 'Impor gagal: ' + (error && error.message ? error.message : 'kesalahan tidak diketahui');
+            importStatusEl.textContent = 'Import failed: ' + (error && error.message ? error.message : 'unknown error');
             qs('#pt-mp-header-title').innerText = '🎵 PT Player';
-            alert('Impor lagu gagal. Periksa console browser untuk detail.');
+            alert('Audio import failed. Check the browser console for details.');
         } finally {
             fileInput.value = '';
         }
