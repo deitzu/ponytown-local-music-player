@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PT Local Music Player (Draggable)
 // @namespace    http://tampermonkey.net/
-// @version      1.9.5
-// @description  Overhauled Local Player: Multiple Tags & Match-ALL Filter
+// @version      1.10.0
+// @description  Local music player with searchable library, lyrics, and metadata tools
 // @author       deitzu
 // @match        https://pony.town/*
 // @grant        none
@@ -27,12 +27,14 @@
     const DB_VERSION = 2;
     const THEMES = ['#ffb74d', '#81c784', '#4dd0e1', '#b39ddb']; 
     
-    let userSettings = JSON.parse(localStorage.getItem('pt_mp_settings')) || { 
-        lrcMode: 1, lrcStyle: 0, lrcBot: 20, lrcSize: 16, autoFetch: true, 
+    const defaultSettings = {
+        lrcMode: 1, lrcStyle: 0, lrcBot: 20, lrcSize: 16, lrcBgOpacity: 0.6, autoFetch: true,
         theme: 0, visMode: true, qOffset: true, idleSec: 3.5, idleOp: 0.3, toastNotif: true, autoTag: true
     };
+    let userSettings = { ...defaultSettings, ...(JSON.parse(localStorage.getItem('pt_mp_settings')) || {}) };
     
     let activeFilters = [];
+    let searchQuery = '';
 
     function openDB() {
         return new Promise((resolve, reject) => {
@@ -98,18 +100,66 @@
     }
 
     async function saveFiles(files) {
+        const fileArray = Array.from(files || []);
+        if (!fileArray.length) return { added: 0, skipped: 0 };
+        const existing = await loadPlaylist();
+        const knownKeys = new Set(existing.map(t => t.sourceKey).filter(Boolean));
+        const legacyTracks = existing.filter(t => !t.sourceKey);
         const itemsToSave = [];
-        for (let i = 0; i < files.length; i++) { 
-            qs('#pt-mp-header-title').innerText = `Memuat ${i+1}/${files.length}...`;
-            let meta = await parseNativeID3(files[i]);
-            let defaultTags = (userSettings.autoTag && meta.genre) ? meta.genre.split(',').map(t=>t.trim()).filter(t=>t) : [];
-            itemsToSave.push({ name: meta.title, artist: meta.artist, album: meta.album, blob: files[i], lyrics: "", lrcOffset: 0, tags: defaultTags }); 
+        let skipped = 0;
+        importProgressWrap.style.display = 'flex';
+        importProgress.max = fileArray.length;
+        importProgress.value = 0;
+        for (let i = 0; i < fileArray.length; i++) {
+            const file = fileArray[i];
+            qs('#pt-mp-header-title').innerText = 'Import ' + (i + 1) + '/' + fileArray.length;
+            importStatusEl.textContent = 'Membaca metadata: ' + file.name;
+            const meta = await parseNativeID3(file);
+            const sourceKey = [String(file.name).toLowerCase(), file.size, file.lastModified || 0].join('::');
+            if (knownKeys.has(sourceKey)) {
+                skipped++;
+                importStatusEl.textContent = 'Duplikat dilewati: ' + file.name;
+                importProgress.value = i + 1;
+                continue;
+            }
+            const normalize = value => String(value || '').trim().toLocaleLowerCase();
+            const possibleLegacyDuplicate = legacyTracks.find(t =>
+                normalize(t.name) === normalize(meta.title) &&
+                normalize(t.artist) === normalize(meta.artist) &&
+                normalize(t.album) === normalize(meta.album) &&
+                t.blob && Number(t.blob.size) === Number(file.size)
+            );
+            if (possibleLegacyDuplicate && !confirm('Kemungkinan duplikat lagu lama: "' + (meta.title || file.name) + '". Impor tetap dilanjutkan?')) {
+                skipped++;
+                importProgress.value = i + 1;
+                continue;
+            }
+            knownKeys.add(sourceKey);
+            itemsToSave.push({
+                name: meta.title, artist: meta.artist, album: meta.album, blob: file,
+                lyrics: '', lrcOffset: 0,
+                tags: (userSettings.autoTag && meta.genre) ? meta.genre.split(',').map(t => t.trim()).filter(Boolean) : [],
+                sourceKey: sourceKey, sourceName: file.name, sourceSize: file.size, sourceLastModified: file.lastModified || 0
+            });
+            importProgress.value = i + 1;
+            importStatusEl.textContent = 'Diproses ' + (i + 1) + '/' + fileArray.length + ' · ' + itemsToSave.length + ' baru · ' + skipped + ' duplikat';
         }
-        const db = await openDB();
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        itemsToSave.forEach(item => tx.objectStore(STORE_NAME).add(item));
-        return new Promise(res => tx.oncomplete = res);
+        if (itemsToSave.length) {
+            const db = await openDB();
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            itemsToSave.forEach(item => tx.objectStore(STORE_NAME).add(item));
+            await new Promise((resolve, reject) => {
+                tx.oncomplete = resolve;
+                tx.onerror = () => reject(tx.error || new Error('Gagal menyimpan database'));
+                tx.onabort = () => reject(tx.error || new Error('Impor dibatalkan'));
+            });
+            db.close();
+        }
+        importProgress.value = fileArray.length;
+        importStatusEl.textContent = 'Selesai: ' + itemsToSave.length + ' ditambahkan, ' + skipped + ' dilewati';
+        return { added: itemsToSave.length, skipped: skipped };
     }
+
 
     async function loadPlaylist() {
         const db = await openDB();
@@ -205,7 +255,7 @@
             #pt-toast.show #toast-progress { animation: toastBar 3s linear forwards; }
             @keyframes toastBar { 0% { transform: scaleX(1); } 100% { transform: scaleX(0); } }
 
-            #pt-mp-container { position: fixed; top: 15px; right: 15px; z-index: 999999; background: rgba(20,20,20,0.85); color: #fff; padding: 10px; border-radius: 8px; font-family: sans-serif; font-size: 12px; width: 220px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px); border: 1px solid #333; user-select: none; -webkit-user-select: none; transition: opacity 0.3s, width 0.2s, padding 0.2s; }
+            #pt-mp-container { position: fixed; top: 15px; right: 15px; z-index: 999999; background: rgba(20,20,20,0.85); color: #fff; padding: 10px; border-radius: 8px; font-family: sans-serif; font-size: 12px; width: min(220px, calc(100vw - 24px)); max-width: calc(100vw - 24px); box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px); border: 1px solid #333; user-select: none; -webkit-user-select: none; transition: opacity 0.3s, width 0.2s, padding 0.2s; }
             #pt-mp-container.minimized { width: auto; padding: 5px 10px; }
             #pt-mp-container.minimized #pt-mp-body, #pt-mp-container.minimized #pt-settings-panel { display: none !important; }
             #pt-mp-header { display: flex; justify-content: space-between; align-items: center; cursor: grab; padding-bottom: 5px; margin-bottom: 5px; border-bottom: 1px solid #444; }
@@ -243,7 +293,35 @@
             #pt-active-filters { display: block; padding: 4px 0 4px 0; border-bottom: 1px solid #333; min-height: 18px;}
             .pt-chip { background: var(--pt-th); color: #000; padding: 2px 6px; border-radius: 8px; font-size: 9px; cursor: pointer; display: inline-block; margin: 2px 2px 2px 0; font-weight: bold;}
             
-            #pt-mp-list { max-height: 120px; overflow-y: auto; padding-top: 4px; display: block; }
+            #pt-mp-list { max-height: min(180px, 28vh); overflow-y: auto; padding-top: 4px; display: block; }
+            #pt-search-row { display:flex; gap:6px; align-items:center; margin:5px 0 3px; }
+            #pt-search { width:100%; min-width:0; box-sizing:border-box; background:#222; color:#fff; border:1px solid #555; border-radius:4px; padding:6px; font:inherit; outline:none; }
+            #pt-search:focus { border-color:var(--pt-th); }
+            #pt-search-count { flex-shrink:0; color:#aaa; font-size:10px; white-space:nowrap; }
+            #pt-import-progress-wrap { display:none; align-items:center; gap:6px; padding:4px 0; color:#aaa; font-size:10px; }
+            #pt-import-progress { width:52px; height:8px; accent-color:var(--pt-th); }
+            #pt-import-status { overflow-wrap:anywhere; }
+            .pt-mp-item-info { min-width:0; max-width:none; }
+            .pt-mp-acts { flex-shrink:0; gap:3px; }
+            .pt-mp-edit { background:#333; color:#ddd; border:0; border-radius:3px; cursor:pointer; font-size:13px; min-width:22px; padding:2px 4px; }
+            .pt-mp-edit:hover { color:var(--pt-th); }
+            .pt-set-row #pt-set-bgop { width:85px; }
+            #pt-meta-modal { display:none; position:fixed; inset:0; z-index:1000001; }
+            #pt-meta-modal.open { display:block; }
+            .pt-meta-backdrop { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:16px; background:rgba(0,0,0,.72); }
+            .pt-meta-dialog { width:min(320px,100%); box-sizing:border-box; padding:14px; border:1px solid #555; border-radius:8px; background:#202020; color:#fff; box-shadow:0 8px 28px rgba(0,0,0,.65); font:12px sans-serif; }
+            .pt-meta-dialog h3 { margin:0 0 12px; color:var(--pt-th); font-size:14px; }
+            .pt-meta-dialog label { display:block; margin:8px 0; color:#bbb; }
+            .pt-meta-dialog input { display:block; width:100%; box-sizing:border-box; margin-top:4px; padding:7px; background:#111; color:#fff; border:1px solid #555; border-radius:4px; font:inherit; }
+            .pt-meta-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+            .pt-meta-actions button { min-height:32px; padding:5px 12px; color:#fff; background:#333; border:1px solid #555; border-radius:4px; }
+            .pt-meta-actions button[type=submit] { color:#111; background:var(--pt-th); border-color:var(--pt-th); }
+            @media (max-width:480px) {
+                #pt-mp-container { width:min(300px, calc(100vw - 16px)); max-width:calc(100vw - 16px); }
+                .pt-mp-controls button, .pt-btn, .pt-head-btn { min-height:32px; }
+                #pt-mp-list { max-height:min(190px, 30vh); }
+                #pt-lyric-overlay { max-width:94vw; }
+            }
             .pt-mp-item { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #222;}
             .pt-mp-item.active { color: var(--pt-th); font-weight: bold; }
             .pt-mp-item-info { display: flex; flex-direction: column; cursor: pointer; overflow: hidden; max-width: 120px; flex-grow:1;}
@@ -268,6 +346,7 @@
             <div class="pt-set-row"><span>Lrc Style:</span><select id="pt-set-style"><option value="0">YouTube</option><option value="1">Glow</option><option value="2">Glass</option></select></div>
             <div class="pt-set-row"><span>Lrc Pos (Y):</span><input type="range" id="pt-set-bot" min="5" max="50" value="20"></div>
             <div class="pt-set-row"><span>Font Size:</span><input type="range" id="pt-set-size" min="12" max="24" value="16"></div>
+            <div class="pt-set-row"><span>Subtitle BG:</span><input type="range" id="pt-set-bgop" min="0" max="1" step="0.05" value="0.6"></div>
             <div class="pt-set-row"><span>Idle Fade (s):</span><input type="range" id="pt-set-idlesec" min="2" max="10" step="0.5" value="3.5"></div>
             <div class="pt-set-row"><span>Idle Opacity:</span><input type="range" id="pt-set-idleop" min="0.1" max="1" step="0.1" value="0.3"></div>
             <div class="pt-set-row" style="margin-top:8px;">
@@ -321,6 +400,14 @@
                 <button id="pt-clear-filters" class="pt-btn" style="width: auto; padding: 0 6px; height: 20px; font-size:10px;">Clear</button>
             </div>
             <div id="pt-active-filters"></div>
+            <div id="pt-search-row">
+                <input type="search" id="pt-search" placeholder="Search title, artist, album, tags..." aria-label="Search playlist">
+                <span id="pt-search-count">0 / 0</span>
+            </div>
+            <div id="pt-import-progress-wrap" aria-live="polite">
+                <progress id="pt-import-progress" max="100" value="0"></progress>
+                <span id="pt-import-status"></span>
+            </div>
             <div id="pt-mp-list"></div>
         </div>
         <input type="file" id="pt-lrc-file" accept=".lrc" style="display:none;">
@@ -330,8 +417,9 @@
     const overlay = document.createElement('div');
     overlay.id = 'pt-lyric-overlay';
     overlay.innerHTML = `<style>
-        #pt-lyric-overlay { position: fixed; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; z-index: 999998; transition: bottom 0.2s; white-space: pre-wrap; font-family: sans-serif; font-weight:bold; display: flex; flex-direction: column; align-items: center; gap: 4px;}
-        .lyric-yt { background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 0; color: #fff; text-shadow: none; }
+        #pt-lyric-overlay { position: fixed; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; z-index: 999998; transition: bottom 0.2s, opacity 0.22s; white-space: pre-wrap; font-family: sans-serif; font-weight:bold; display: flex; flex-direction: column; align-items: center; gap: 4px; max-width:94vw; box-sizing:border-box;}
+        #pt-lyric-text { max-width:min(90vw, 900px); width:max-content; box-sizing:border-box; overflow-wrap:anywhere; white-space:pre-wrap; opacity:1; transition: opacity .22s ease, transform .22s ease; }
+        .lyric-yt { background: rgba(0,0,0,var(--pt-lrc-bg,0.6)); padding: 3px 10px; border-radius: 3px; color: #fff; text-shadow: none; }
         .lyric-glow { background: transparent; color: #fff; text-shadow: 2px 2px 3px #000, -2px -2px 3px #000, 2px -2px 3px #000, -2px 2px 3px #000; }
         .lyric-glass { background: rgba(255,255,255,0.1); backdrop-filter: blur(6px); padding: 4px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); color: #fff; text-shadow: 1px 1px 2px #000;}
         #pt-qoff-panel { pointer-events: auto; display: none; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 12px; font-size: 10px; color: #fff; border: 1px solid #555; align-items: center; gap: 6px; backdrop-filter: blur(2px);}
@@ -342,6 +430,11 @@
     <div id="pt-qoff-panel"><button id="qoff-dec" class="pt-qoff-btn">-</button><span id="qoff-val">0.0s</span><button id="qoff-inc" class="pt-qoff-btn">+</button></div>`;
     document.body.appendChild(overlay);
 
+    const metaModal = document.createElement('div');
+    metaModal.id = 'pt-meta-modal';
+    metaModal.innerHTML = "<div class='pt-meta-backdrop' id='pt-meta-backdrop'><form class='pt-meta-dialog' id='pt-meta-form' role='dialog' aria-modal='true' aria-labelledby='pt-meta-heading'><h3 id='pt-meta-heading'>Edit track metadata</h3><label>Title<input id='pt-meta-name' maxlength='240' required></label><label>Artist<input id='pt-meta-artist' maxlength='240'></label><label>Album<input id='pt-meta-album' maxlength='240'></label><label>Tags (comma separated)<input id='pt-meta-tags' maxlength='500'></label><div class='pt-meta-actions'><button type='button' id='pt-meta-cancel'>Cancel</button><button type='submit'>Save</button></div></form></div>";
+    document.body.appendChild(metaModal);
+
     const qs = sel => container.querySelector(sel);
     const headerEl = qs('#pt-mp-header'), titleEl = qs('#pt-track-title'), artistEl = qs('#pt-track-artist');
     const playBtn = qs('#pt-play'), prevBtn = qs('#pt-prev'), nextBtn = qs('#pt-next'), fileInput = qs('#pt-file');
@@ -351,6 +444,44 @@
     const lrcFileIn = qs('#pt-lrc-file'), embLrcEl = qs('#pt-embedded-lrc'), ovLrcEl = overlay.querySelector('#pt-lyric-text');
     const qoffPanel = overlay.querySelector('#pt-qoff-panel'), qoffVal = overlay.querySelector('#qoff-val');
     const tagFilterEl = qs('#pt-tag-filter'), tagFilterContainer = qs('#pt-tag-filter-container'), activeFiltersEl = qs('#pt-active-filters');
+    const searchRowEl = qs('#pt-search-row'), searchEl = qs('#pt-search'), searchCountEl = qs('#pt-search-count');
+    const importProgressWrap = qs('#pt-import-progress-wrap'), importProgress = qs('#pt-import-progress'), importStatusEl = qs('#pt-import-status');
+    const metaFormEl = metaModal.querySelector('#pt-meta-form'), metaNameEl = metaModal.querySelector('#pt-meta-name');
+    const metaArtistEl = metaModal.querySelector('#pt-meta-artist'), metaAlbumEl = metaModal.querySelector('#pt-meta-album'), metaTagsEl = metaModal.querySelector('#pt-meta-tags');
+    let editingTrackId = null;
+    function closeMetadataEditor() { metaModal.classList.remove('open'); editingTrackId = null; }
+    function openMetadataEditor(track) {
+        editingTrackId = track.id;
+        metaNameEl.value = track.name || '';
+        metaArtistEl.value = track.artist || '';
+        metaAlbumEl.value = track.album || '';
+        metaTagsEl.value = (track.tags || (track.tag ? [track.tag] : [])).join(', ');
+        metaModal.classList.add('open');
+        metaNameEl.focus();
+    }
+    metaModal.addEventListener('click', e => { if (e.target.id === 'pt-meta-backdrop') closeMetadataEditor(); });
+    metaModal.querySelector('#pt-meta-cancel').onclick = closeMetadataEditor;
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && metaModal.classList.contains('open')) closeMetadataEditor(); });
+    metaFormEl.addEventListener('submit', async e => {
+        e.preventDefault();
+        const track = playlist.find(t => t.id === editingTrackId);
+        if (!track) { closeMetadataEditor(); return; }
+        track.name = metaNameEl.value.trim() || 'Untitled';
+        track.artist = metaArtistEl.value.trim();
+        track.album = metaAlbumEl.value.trim();
+        track.tags = metaTagsEl.value.split(',').map(t => t.trim()).filter(Boolean);
+        track.tag = null;
+        await updateTrack(track);
+        if (currentIndex >= 0 && playlist[currentIndex] && playlist[currentIndex].id === track.id) {
+            titleEl.innerText = track.name;
+            artistEl.innerText = track.artist || 'Unknown Artist';
+            checkMarquee();
+            updateMediaSession(track);
+        }
+        closeMetadataEditor();
+        await refreshUI();
+    });
+
 
     function resetIdle() {
         container.style.opacity = 1; clearTimeout(idleTimer);
@@ -359,6 +490,7 @@
 
     qs('#pt-set-mode').value = userSettings.lrcMode; qs('#pt-set-style').value = userSettings.lrcStyle;
     qs('#pt-set-bot').value = userSettings.lrcBot; qs('#pt-set-size').value = userSettings.lrcSize;
+    qs('#pt-set-bgop').value = userSettings.lrcBgOpacity ?? 0.6;
     qs('#pt-set-fetch').checked = userSettings.autoFetch; qs('#pt-set-th').value = userSettings.theme;
     qs('#pt-set-vis').checked = userSettings.visMode; qs('#pt-set-qoff').checked = userSettings.qOffset;
     qs('#pt-set-idlesec').value = userSettings.idleSec; qs('#pt-set-idleop').value = userSettings.idleOp;
@@ -368,6 +500,7 @@
         userSettings = {
             lrcMode: parseInt(qs('#pt-set-mode').value), lrcStyle: parseInt(qs('#pt-set-style').value),
             lrcBot: parseInt(qs('#pt-set-bot').value), lrcSize: parseInt(qs('#pt-set-size').value),
+            lrcBgOpacity: parseFloat(qs('#pt-set-bgop').value),
             autoFetch: qs('#pt-set-fetch').checked, theme: parseInt(qs('#pt-set-th').value),
             visMode: qs('#pt-set-vis').checked, qOffset: qs('#pt-set-qoff').checked,
             idleSec: parseFloat(qs('#pt-set-idlesec').value), idleOp: parseFloat(qs('#pt-set-idleop').value),
@@ -376,6 +509,7 @@
         localStorage.setItem('pt_mp_settings', JSON.stringify(userSettings));
         
         document.documentElement.style.setProperty('--pt-th', THEMES[userSettings.theme]);
+        document.documentElement.style.setProperty('--pt-lrc-bg', String(userSettings.lrcBgOpacity ?? 0.6));
         overlay.style.display = userSettings.lrcMode === 1 ? 'flex' : 'none';
         embLrcEl.style.display = userSettings.lrcMode === 2 ? 'block' : 'none';
         overlay.style.bottom = userSettings.lrcBot + '%';
@@ -398,6 +532,15 @@
     if (savedPos) {
         try { const pos = JSON.parse(savedPos); container.style.right = 'unset'; container.style.left = pos.left; container.style.top = pos.top; } catch(e) {}
     }
+    function clampSavedPosition() {
+        if (!container.style.left || !container.style.top) return;
+        const rect = container.getBoundingClientRect();
+        container.style.left = Math.max(0, Math.min(Math.max(0, window.innerWidth - rect.width), parseFloat(container.style.left) || 0)) + 'px';
+        container.style.top = Math.max(0, Math.min(Math.max(0, window.innerHeight - rect.height), parseFloat(container.style.top) || 0)) + 'px';
+        localStorage.setItem('pt_mp_pos', JSON.stringify({ left: container.style.left, top: container.style.top }));
+    }
+    window.addEventListener('resize', clampSavedPosition);
+    clampSavedPosition();
 
     ['touchstart', 'touchmove', 'mousemove', 'mousedown', 'wheel', 'keydown', 'keyup'].forEach(evt => {
         container.addEventListener(evt, e => {
@@ -422,7 +565,11 @@
         if (!isDragging) return; e.preventDefault();
         let curX = (e.type === "touchmove") ? e.touches[0].clientX : e.clientX;
         let curY = (e.type === "touchmove") ? e.touches[0].clientY : e.clientY;
-        container.style.left = (startX + (curX - initialX)) + "px"; container.style.top = (startY + (curY - initialY)) + "px";
+        const rect = container.getBoundingClientRect();
+        const maxX = Math.max(0, window.innerWidth - rect.width);
+        const maxY = Math.max(0, window.innerHeight - rect.height);
+        container.style.left = Math.max(0, Math.min(maxX, startX + (curX - initialX))) + 'px';
+        container.style.top = Math.max(0, Math.min(maxY, startY + (curY - initialY))) + 'px';
     }
     function dragEnd() { 
         if(!isDragging) return; isDragging = false; resetIdle(); 
@@ -447,6 +594,8 @@
         listEl.style.display = isListOpen ? 'block' : 'none'; 
         tagFilterContainer.style.display = isListOpen ? 'flex' : 'none';
         activeFiltersEl.style.display = isListOpen ? 'block' : 'none';
+        searchRowEl.style.display = isListOpen ? 'flex' : 'none';
+        importProgressWrap.style.display = (isListOpen && importStatusEl.textContent) ? 'flex' : 'none';
         toggleListBtn.innerText = isListOpen ? '▼ List' : '▲ List'; 
     };
     qs('#pt-clear-all').onclick = async () => {
@@ -467,15 +616,24 @@
     }
 
     function displayLyric(text) {
-        embLrcEl.innerText = text; ovLrcEl.innerText = text;
-        if (!text) {
-            if (userSettings.lrcMode === 2) embLrcEl.style.display = 'none';
-            if (userSettings.lrcMode === 1) ovLrcEl.style.display = 'none';
-        } else {
-            if (userSettings.lrcMode === 2) embLrcEl.style.display = 'block';
-            if (userSettings.lrcMode === 1) ovLrcEl.style.display = 'block';
+        embLrcEl.innerText = text;
+        ovLrcEl.innerText = text;
+        const hasText = Boolean(text && text.trim());
+        ovLrcEl.style.opacity = hasText ? '1' : '0';
+        ovLrcEl.style.transform = hasText ? 'translateY(0)' : 'translateY(5px)';
+        if (userSettings.lrcMode === 2) {
+            embLrcEl.style.display = hasText ? 'block' : 'none';
+        }
+        if (userSettings.lrcMode === 1) {
+            ovLrcEl.style.display = 'block';
+            if (!hasText) {
+                setTimeout(() => {
+                    if (!ovLrcEl.textContent.trim() && userSettings.lrcMode === 1) ovLrcEl.style.display = 'none';
+                }, 240);
+            }
         }
     }
+
 
     audio.addEventListener('timeupdate', () => {
         if (!isSeeking) seekEl.value = audio.currentTime;
@@ -599,113 +757,148 @@
 
     async function refreshUI() { playlist = await loadPlaylist(); renderList(); updateQuickOffsetUI(); }
 
+    function matchesTrack(track) {
+        const tags = track.tags || (track.tag ? [track.tag] : []);
+        if (activeFilters.includes('Untagged')) {
+            if (tags.length > 0) return false;
+        } else if (activeFilters.length > 0 && !activeFilters.every(f => tags.includes(f))) {
+            return false;
+        }
+        if (!searchQuery) return true;
+        const haystack = [track.name, track.artist, track.album].concat(tags).join(' ').toLocaleLowerCase();
+        return haystack.includes(searchQuery);
+    }
+
     function getFilteredPool() {
-        let pool = [];
-        playlist.forEach((track, i) => {
-            const tags = track.tags || (track.tag ? [track.tag] : []);
-            let show = true;
-            if(activeFilters.includes('Untagged')) {
-                if(tags.length > 0) show = false;
-            } else if (activeFilters.length > 0) {
-                show = activeFilters.every(f => tags.includes(f));
-            }
-            if(show) pool.push(i);
-        });
+        const pool = [];
+        playlist.forEach((track, i) => { if (matchesTrack(track)) pool.push(i); });
         return pool;
     }
 
     function renderList() {
         const allTags = new Set();
-        playlist.forEach(t => { 
-            const tags = t.tags || (t.tag ? [t.tag] : []);
-            tags.forEach(tg => allTags.add(tg));
+        playlist.forEach(track => {
+            const tags = track.tags || (track.tag ? [track.tag] : []);
+            tags.forEach(tag => allTags.add(tag));
         });
-        
-        tagFilterEl.innerHTML = `<option value="" disabled selected>+ Add Tag</option><option value="Untagged">Untagged</option>`;
+        tagFilterEl.innerHTML = '<option value="" disabled selected>+ Add Tag</option><option value="Untagged">Untagged</option>';
         Array.from(allTags).sort().forEach(tag => {
-            if(!activeFilters.includes(tag)) {
+            if (!activeFilters.includes(tag)) {
                 const opt = document.createElement('option');
-                opt.value = tag; opt.innerText = tag;
+                opt.value = tag;
+                opt.innerText = tag;
                 tagFilterEl.appendChild(opt);
             }
         });
-        
+
         activeFiltersEl.innerHTML = '';
-        if(activeFilters.length === 0) {
-            activeFiltersEl.innerHTML = `<span style="font-size:10px; color:#aaa; margin-left:4px;">All Tracks</span>`;
+        if (!activeFilters.length) {
+            activeFiltersEl.innerHTML = '<span style="font-size:10px;color:#aaa;margin-left:4px;">All Tracks</span>';
         } else {
-            activeFilters.forEach(f => {
+            activeFilters.forEach(filter => {
                 const chip = document.createElement('span');
-                chip.className = 'pt-chip'; chip.innerText = f + ' ✕';
-                chip.onclick = () => { activeFilters = activeFilters.filter(x => x !== f); renderList(); };
+                chip.className = 'pt-chip';
+                chip.innerText = filter + ' ✕';
+                chip.onclick = () => { activeFilters = activeFilters.filter(item => item !== filter); renderList(); };
                 activeFiltersEl.appendChild(chip);
             });
         }
 
+        const filtered = getFilteredPool();
+        searchCountEl.textContent = filtered.length + ' / ' + playlist.length;
         listEl.innerHTML = '';
-        let visibleCount = 0;
-        
-        playlist.forEach((track, idx) => {
-            const tags = track.tags || (track.tag ? [track.tag] : []);
-            
-            let show = true;
-            if(activeFilters.includes('Untagged')) {
-                if(tags.length > 0) show = false;
-            } else if (activeFilters.length > 0) {
-                show = activeFilters.every(f => tags.includes(f));
-            }
-            
-            if(!show) return;
-            
-            visibleCount++;
-            const item = document.createElement('div');
-            item.className = `pt-mp-item ${idx === currentIndex ? 'active' : ''}`;
-            
-            let tagDisplay = "";
-            if (tags.length > 0) {
-                if (tags.length <= 2) tagDisplay = ` • [${tags.join(', ')}]`;
-                else tagDisplay = ` • [${tags[0]}, ${tags[1]}, +${tags.length - 2}]`;
-            }
+        if (!filtered.length) {
+            const empty = document.createElement('div');
+            empty.style.cssText = 'text-align:center;color:#888;padding:12px 6px;line-height:1.4;';
+            empty.textContent = playlist.length ? 'Tidak ada lagu yang cocok dengan filter/pencarian.' : 'Playlist kosong. Tekan + Add untuk mengimpor lagu.';
+            listEl.appendChild(empty);
+            return;
+        }
 
-            const info = document.createElement('div'); info.className = 'pt-mp-item-info';
-            info.innerHTML = `<span class="pt-mp-item-name">${track.name}</span>
-                              <span class="pt-mp-item-artist">${track.artist || 'Unknown'}${tagDisplay} ${track.lyrics ? '✓' : ''}</span>`;
+        filtered.forEach(idx => {
+            const track = playlist[idx];
+            const tags = track.tags || (track.tag ? [track.tag] : []);
+            const item = document.createElement('div');
+            item.className = 'pt-mp-item' + (idx === currentIndex ? ' active' : '');
+
+            let tagDisplay = '';
+            if (tags.length <= 2 && tags.length > 0) tagDisplay = ' • [' + tags.join(', ') + ']';
+            else if (tags.length > 2) tagDisplay = ' • [' + tags[0] + ', ' + tags[1] + ', +' + (tags.length - 2) + ']';
+
+            const info = document.createElement('div');
+            info.className = 'pt-mp-item-info';
+            const name = document.createElement('span');
+            name.className = 'pt-mp-item-name';
+            name.textContent = track.name || 'Untitled';
+            const artist = document.createElement('span');
+            artist.className = 'pt-mp-item-artist';
+            artist.textContent = (track.artist || 'Unknown') + tagDisplay + (track.lyrics ? ' ✓' : '');
+            info.append(name, artist);
+            info.title = [track.name, track.artist, track.album].filter(Boolean).join(' — ');
             info.onclick = () => playTrack(idx);
-            
-            const acts = document.createElement('div'); acts.className = 'pt-mp-acts';
-            
-            const tagBtn = document.createElement('button'); tagBtn.className = 'pt-mp-lrc-btn'; tagBtn.innerHTML = svgTag;
-            tagBtn.onclick = async (e) => {
+
+            const acts = document.createElement('div');
+            acts.className = 'pt-mp-acts';
+
+            const editBtn = document.createElement('button');
+            editBtn.className = 'pt-mp-edit';
+            editBtn.innerText = '✎';
+            editBtn.title = 'Edit metadata';
+            editBtn.setAttribute('aria-label', 'Edit metadata for ' + (track.name || 'track'));
+            editBtn.onclick = e => { e.stopPropagation(); openMetadataEditor(track); };
+
+            const tagBtn = document.createElement('button');
+            tagBtn.className = 'pt-mp-lrc-btn';
+            tagBtn.innerHTML = svgTag;
+            tagBtn.title = 'Edit tags';
+            tagBtn.onclick = async e => {
                 e.stopPropagation();
-                const newTag = prompt("Edit Tags (comma separated):", tags.join(", "));
+                const newTag = prompt('Edit Tags (comma separated):', tags.join(', '));
                 if (newTag !== null) {
-                    track.tags = newTag.split(',').map(t => t.trim()).filter(t => t);
+                    track.tags = newTag.split(',').map(tag => tag.trim()).filter(Boolean);
                     track.tag = null;
                     await updateTrack(track);
-                    refreshUI();
+                    await refreshUI();
                 }
             };
 
-            const lrcBtn = document.createElement('button'); lrcBtn.className = 'pt-mp-lrc-btn'; lrcBtn.innerText = '+LRC';
-            lrcBtn.onclick = (e) => { e.stopPropagation(); targetUploadTrackId = track.id; lrcFileIn.click(); };
-            
-            const delBtn = document.createElement('button'); delBtn.className = 'pt-mp-del'; delBtn.innerText = '✕';
-            delBtn.onclick = async (e) => {
-                e.stopPropagation(); await deleteTrack(track.id);
-                if (idx === currentIndex) { audio.pause(); titleEl.innerText = '-'; artistEl.innerText = '-'; currentIndex = -1; timeEl.innerText="00:00 / 00:00"; seekEl.value=0; displayLyric(""); checkMarquee(); } 
-                else if (idx < currentIndex) currentIndex--;
-                refreshUI();
+            const lrcBtn = document.createElement('button');
+            lrcBtn.className = 'pt-mp-lrc-btn';
+            lrcBtn.innerText = '+LRC';
+            lrcBtn.title = 'Attach lyrics file';
+            lrcBtn.onclick = e => { e.stopPropagation(); targetUploadTrackId = track.id; lrcFileIn.click(); };
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'pt-mp-del';
+            delBtn.innerText = '✕';
+            delBtn.title = 'Delete track';
+            delBtn.onclick = async e => {
+                e.stopPropagation();
+                if (!confirm('Hapus "' + (track.name || 'Untitled') + '" dari playlist?')) return;
+                await deleteTrack(track.id);
+                if (playlist[currentIndex] && playlist[currentIndex].id === track.id) {
+                    audio.pause(); titleEl.innerText = '-'; artistEl.innerText = '-';
+                    currentIndex = -1; timeEl.innerText = '00:00 / 00:00'; seekEl.value = 0;
+                    displayLyric(''); titleEl.classList.remove('is-marquee');
+                } else if (idx < currentIndex) currentIndex--;
+                await refreshUI();
             };
-            
-            acts.append(tagBtn, lrcBtn, delBtn); item.append(info, acts); listEl.appendChild(item);
+
+            acts.append(editBtn, tagBtn, lrcBtn, delBtn);
+            item.append(info, acts);
+            listEl.appendChild(item);
         });
-        if(visibleCount === 0) listEl.innerHTML = '<div style="text-align:center;color:#777;padding:10px;">Kosong.</div>';
     }
+
+    searchEl.addEventListener('input', () => {
+        searchQuery = searchEl.value.trim().toLocaleLowerCase();
+        renderList();
+    });
 
     playBtn.onclick = () => {
         if (!playlist.length) return;
         initWebAudio(); if (audioCtx.state === 'suspended') audioCtx.resume();
-        if (audio.paused) { currentIndex === -1 ? playTrack(getFilteredPool()[0] || 0) : audio.play(); } 
+        if (audio.paused) { currentIndex === -1 ? playTrack(getFilteredPool()[0] ?? -1) : audio.play(); }
         else { audio.pause(); }
     };
     nextBtn.onclick = () => {
@@ -753,12 +946,19 @@
     };
 
     fileInput.onchange = async (e) => {
-        if (e.target.files.length) { 
-            qs('#pt-mp-header-title').innerText = "Loading..."; 
-            await saveFiles(e.target.files); 
-            fileInput.value = ''; 
-            qs('#pt-mp-header-title').innerText = "🎵 PT Player";
-            refreshUI(); 
+        if (!e.target.files.length) return;
+        try {
+            await saveFiles(e.target.files);
+            await refreshUI();
+            qs('#pt-mp-header-title').innerText = '🎵 PT Player';
+        } catch (error) {
+            console.error('PT Music Player import failed', error);
+            importProgressWrap.style.display = 'flex';
+            importStatusEl.textContent = 'Impor gagal: ' + (error && error.message ? error.message : 'kesalahan tidak diketahui');
+            qs('#pt-mp-header-title').innerText = '🎵 PT Player';
+            alert('Impor lagu gagal. Periksa console browser untuk detail.');
+        } finally {
+            fileInput.value = '';
         }
     };
     refreshUI();
