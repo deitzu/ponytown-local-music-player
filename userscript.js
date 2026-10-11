@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PT Local Music Player (Draggable)
 // @namespace    http://tampermonkey.net/
-// @version      2.4.0
+// @version      2.5.0
 // @description  Themeable local player with synchronized lyrics, searchable library and metadata tools
 // @author       deitzu
 // @match        https://pony.town/*
@@ -26,11 +26,13 @@
     const STORE_NAME = 'playlist';
     const DB_VERSION = 2;
     const THEMES = [
-        { name: 'Tokyo Night', bg: 'rgba(26,27,38,0.85)', card: '#16161e', border: '#3b4261', text: '#c0caf5', subtext: '#7dcfff', accent: '#7aa2f7' },
+        { name: 'Tokyo Night', bg: 'rgba(28,28,37,0.90)', card: '#23232e', border: '#454653', text: '#dad7e2', subtext: '#a7a4b5', accent: '#9eacc9' },
         { name: 'Espresso', bg: 'rgba(33,26,30,0.85)', card: '#2b2124', border: '#4a3b40', text: '#d4c5b9', subtext: '#b49c8c', accent: '#c88d75' },
-        { name: 'Dracula', bg: 'rgba(40,42,54,0.85)', card: '#21222c', border: '#44475a', text: '#f8f8f2', subtext: '#ff79c6', accent: '#bd93f9' },
-        { name: 'Nord', bg: 'rgba(46,52,64,0.85)', card: '#3b4252', border: '#4c566a', text: '#eceff4', subtext: '#8fbcbb', accent: '#88c0d0' },
-        { name: 'Catppuccin Mocha', bg: 'rgba(30,30,46,0.85)', card: '#181825', border: '#313244', text: '#cdd6f4', subtext: '#f5c2e7', accent: '#cba6f7' }
+        { name: 'Dracula', bg: 'rgba(34,31,39,0.90)', card: '#29242f', border: '#4a414f', text: '#e3dce6', subtext: '#b7aabf', accent: '#b9a1c8' },
+        { name: 'Nord', bg: 'rgba(35,41,45,0.90)', card: '#2d353a', border: '#4a565b', text: '#dde4e0', subtext: '#aab8b2', accent: '#a1bdaf' },
+        { name: 'Catppuccin Mocha', bg: 'rgba(31,29,38,0.90)', card: '#25232d', border: '#48414f', text: '#e2dde8', subtext: '#b8aab8', accent: '#c4a0a7' },
+        { name: 'Mosswood', bg: 'rgba(34,37,31,0.90)', card: '#2d332b', border: '#505948', text: '#e4e3d8', subtext: '#b4b6a5', accent: '#adb99c' },
+        { name: 'Oxblood', bg: 'rgba(36,29,32,0.90)', card: '#34252a', border: '#583941', text: '#e6dadd', subtext: '#c6aeb2', accent: '#c08d91' }
     ];
 
     let userSettings = JSON.parse(localStorage.getItem('pt_mp_settings')) || {

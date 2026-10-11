@@ -1,11 +1,11 @@
 # PT Local Music Player
 
 [![Tampermonkey](https://img.shields.io/badge/Userscript-Tampermonkey-blue?style=flat-square)](https://www.tampermonkey.net/)
-[![Userscript](https://img.shields.io/badge/userscript-2.4.0-orange?style=flat-square)](userscript.js)
+[![Userscript](https://img.shields.io/badge/userscript-2.5.0-orange?style=flat-square)](userscript.js)
 [![Android](https://img.shields.io/badge/android-0.2.0-3ddc84?style=flat-square)](android/README.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/deitzu/ponytown-local-music-player?style=social)](https://github.com/deitzu/ponytown-local-music-player/stargazers)
-[![Lines of Code](https://img.shields.io/badge/LoC-1322-brightgreen?style=flat-square)](userscript.js)
+[![Lines of Code](https://img.shields.io/badge/LoC-1324-brightgreen?style=flat-square)](userscript.js)
 
 ![Screenshot](Screenshot_2026-09-06-14-14-36-218-edit_com.lemurbrowser.exts.jpg)
 
@@ -59,7 +59,7 @@ This repository also contains a standalone **native Android rebuild** of the pla
 - Canvas-based frequency bars using the Web Audio analyser, colored by the active theme
 
 ### Themes
-- Five themes: Tokyo Night, Espresso, Dracula, Nord, Catppuccin Mocha
+- Seven themes: Tokyo Night, Espresso, Dracula, Nord, Catppuccin Mocha, Mosswood, Oxblood
 
 ### Playback Controls
 - Play / Pause / Previous / Next
@@ -110,7 +110,7 @@ All settings persist in `localStorage` under key `pt_mp_settings`:
 
 | Setting | Options | Default |
 |---------|---------|---------|
-| Theme | Tokyo Night / Espresso / Dracula / Nord / Catppuccin Mocha | Tokyo Night |
+| Theme | Tokyo Night / Espresso / Dracula / Nord / Catppuccin Mocha / Mosswood / Oxblood | Tokyo Night |
 | Lrc Mode | Off / Overlay / Embedded | Overlay |
 | Lrc Style | YouTube / Glow / Glass | YouTube |
 | Ori / Romaji / Trans | On / Off each | On |
@@ -145,6 +145,16 @@ Full details, permissions, and build notes: [`android/README.md`](android/README
 ---
 
 ## Changelog
+
+### v2.5.0 — Cozy Theme Palettes
+*Oct 11, 2026*
+
+- Added Mosswood, a muted forest-green palette with sage accents
+- Added Oxblood, a dark burgundy palette with muted rose accents
+- Softened the existing Tokyo Night, Dracula, Nord, and Catppuccin Mocha palettes while keeping Espresso unchanged
+- Kept new themes at the end of the theme list so existing saved theme indices remain stable
+
+---
 
 ### v2.4.0 — Searchable Library and UI Improvements
 *Oct 11, 2026*
@@ -271,7 +281,7 @@ All icons are inline SVGs defined directly in the script (public domain / MIT), 
 
 ## File Structure
 ```
-userscript.js            # Pony Town userscript (v2.4.0, single file)
+userscript.js            # Pony Town userscript (v2.5.0, single file)
 android/                 # Native Android app (Kotlin + Compose + Media3)
 .github/workflows/       # CI: builds the Android debug APK
 README.md                # This file
